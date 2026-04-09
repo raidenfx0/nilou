@@ -4,6 +4,7 @@ import {
   PermissionFlagsBits,
 } from "discord.js";
 import { stickyMessages } from "../data/store.js";
+import { NILOU_TEAL, FOOTER_STICKY, DIVIDER } from "../theme.js";
 
 export const data = new SlashCommandBuilder()
   .setName("sticky")
@@ -14,25 +15,17 @@ export const data = new SlashCommandBuilder()
       .setName("set")
       .setDescription("Set a sticky message in this channel")
       .addStringOption((o) =>
-        o
-          .setName("content")
-          .setDescription("The sticky message content")
-          .setRequired(true)
+        o.setName("content").setDescription("The sticky message content").setRequired(true)
       )
       .addStringOption((o) =>
         o.setName("title").setDescription("Embed title").setRequired(false)
       )
       .addStringOption((o) =>
-        o
-          .setName("color")
-          .setDescription("Hex color (e.g. #FF5733)")
-          .setRequired(false)
+        o.setName("color").setDescription("Hex color (e.g. #48CAE4)").setRequired(false)
       )
   )
   .addSubcommand((sub) =>
-    sub
-      .setName("remove")
-      .setDescription("Remove the sticky message from this channel")
+    sub.setName("remove").setDescription("Remove the sticky message from this channel")
   )
   .addSubcommand((sub) =>
     sub.setName("view").setDescription("View the current sticky message")
@@ -43,11 +36,11 @@ export async function execute(interaction) {
   const key = `${interaction.guildId}:${interaction.channelId}`;
 
   if (sub === "set") {
-    const content = interaction.options.getString("content");
-    const title = interaction.options.getString("title") || "📌 Pinned Message";
+    const content    = interaction.options.getString("content");
+    const title      = interaction.options.getString("title") || "🌺 Pinned";
     const colorInput = interaction.options.getString("color");
 
-    let color = 0x5865f2;
+    let color = NILOU_TEAL;
     if (colorInput) {
       const parsed = parseInt(colorInput.replace("#", ""), 16);
       if (!isNaN(parsed)) color = parsed;
@@ -55,57 +48,41 @@ export async function execute(interaction) {
 
     const embed = new EmbedBuilder()
       .setColor(color)
-      .setTitle(title)
-      .setDescription(content)
-      .setTimestamp()
-      .setFooter({ text: "Sticky Message" });
+      .setTitle(`📌 ✦ ${title}`)
+      .setDescription(`${DIVIDER}\n${content}\n${DIVIDER}`)
+      .setFooter(FOOTER_STICKY)
+      .setTimestamp();
 
     const sent = await interaction.channel.send({ embeds: [embed] });
 
-    stickyMessages.set(key, {
-      content,
-      title,
-      color,
-      lastMessageId: sent.id,
-    });
+    stickyMessages.set(key, { content, title, color, lastMessageId: sent.id });
 
     await interaction.reply({
-      content: `✅ Sticky message set! It will reappear after every new message.`,
+      content: `🌸 Sticky message set! It will stay at the bottom like Nilou's unwavering dance.`,
       ephemeral: true,
     });
   } else if (sub === "remove") {
     if (!stickyMessages.has(key)) {
-      return interaction.reply({
-        content: "❌ No sticky message set in this channel.",
-        ephemeral: true,
-      });
+      return interaction.reply({ content: "💧 No sticky message found in this channel.", ephemeral: true });
     }
 
     const sticky = stickyMessages.get(key);
     if (sticky.lastMessageId) {
       try {
-        const old = await interaction.channel.messages.fetch(
-          sticky.lastMessageId
-        );
+        const old = await interaction.channel.messages.fetch(sticky.lastMessageId);
         if (old) await old.delete();
       } catch {}
     }
 
     stickyMessages.delete(key);
-    await interaction.reply({
-      content: "✅ Sticky message removed.",
-      ephemeral: true,
-    });
+    await interaction.reply({ content: "✨ Sticky message gracefully removed.", ephemeral: true });
   } else if (sub === "view") {
     if (!stickyMessages.has(key)) {
-      return interaction.reply({
-        content: "❌ No sticky message set in this channel.",
-        ephemeral: true,
-      });
+      return interaction.reply({ content: "💧 No sticky message found in this channel.", ephemeral: true });
     }
     const sticky = stickyMessages.get(key);
     await interaction.reply({
-      content: `**Current sticky:** ${sticky.title}\n${sticky.content}`,
+      content: `**📌 Current sticky — ${sticky.title}:**\n${sticky.content}`,
       ephemeral: true,
     });
   }

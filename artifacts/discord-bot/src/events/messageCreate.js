@@ -1,14 +1,13 @@
 import { Events, EmbedBuilder } from "discord.js";
 import { stickyMessages } from "../data/store.js";
+import { NILOU_TEAL, FOOTER_STICKY, DIVIDER } from "../theme.js";
 
 export const name = Events.MessageCreate;
 
 export async function execute(message) {
   if (message.author.bot) return;
 
-  const guildId = message.guildId;
-  const channelId = message.channelId;
-  const key = `${guildId}:${channelId}`;
+  const key = `${message.guildId}:${message.channelId}`;
 
   if (stickyMessages.has(key)) {
     const sticky = stickyMessages.get(key);
@@ -21,11 +20,11 @@ export async function execute(message) {
     }
 
     const embed = new EmbedBuilder()
-      .setColor(sticky.color || 0x5865f2)
-      .setTitle(sticky.title || "📌 Pinned Message")
-      .setDescription(sticky.content)
-      .setTimestamp()
-      .setFooter({ text: "Sticky Message" });
+      .setColor(sticky.color || NILOU_TEAL)
+      .setTitle(`📌 ✦ ${sticky.title || "Pinned"}`)
+      .setDescription(`${DIVIDER}\n${sticky.content}\n${DIVIDER}`)
+      .setFooter(FOOTER_STICKY)
+      .setTimestamp();
 
     const sent = await message.channel.send({ embeds: [embed] });
     sticky.lastMessageId = sent.id;

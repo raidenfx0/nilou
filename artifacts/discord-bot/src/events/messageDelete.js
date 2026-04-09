@@ -1,5 +1,6 @@
 import { Events, EmbedBuilder } from "discord.js";
 import { ghostPingChannels } from "../data/store.js";
+import { NILOU_RED, FOOTER_GHOST } from "../theme.js";
 
 export const name = Events.MessageDelete;
 
@@ -8,6 +9,8 @@ export async function execute(message) {
   if (message.author?.bot) return;
 
   const logChannelId = ghostPingChannels.get(message.guildId) ?? null;
+
+  if (!ghostPingChannels.has(message.guildId)) return;
 
   const mentionedUsers = message.mentions?.users;
   const mentionedRoles = message.mentions?.roles;
@@ -26,46 +29,42 @@ export async function execute(message) {
 
   if (!channel) return;
 
-  const userMentions =
-    mentionedUsers?.map((u) => `<@${u.id}>`).join(", ") || "";
-  const roleMentions =
-    mentionedRoles?.map((r) => `<@&${r.id}>`).join(", ") || "";
+  const userMentions   = mentionedUsers?.map((u) => `<@${u.id}>`).join(", ") || "";
+  const roleMentions   = mentionedRoles?.map((r) => `<@&${r.id}>`).join(", ") || "";
   const specialMentions = [];
   if (message.content?.includes("@everyone")) specialMentions.push("@everyone");
-  if (message.content?.includes("@here")) specialMentions.push("@here");
+  if (message.content?.includes("@here"))     specialMentions.push("@here");
 
   const allPings = [userMentions, roleMentions, specialMentions.join(", ")]
     .filter(Boolean)
     .join(", ");
 
   const embed = new EmbedBuilder()
-    .setColor(0xff4444)
-    .setTitle("👻 Ghost Ping Detected")
+    .setColor(NILOU_RED)
+    .setTitle("👁️ ✦ Ghost Ping Detected")
+    .setDescription("*The mist does not deceive Nilou's watchful eyes...*")
     .addFields(
       {
-        name: "Author",
-        value: `<@${message.author?.id}> (${message.author?.tag || "Unknown"})`,
+        name: "🌊 Offender",
+        value: `<@${message.author?.id}> *(${message.author?.tag || "Unknown"})*`,
         inline: true,
       },
-      { name: "Channel", value: `<#${message.channelId}>`, inline: true },
+      { name: "📍 Channel",  value: `<#${message.channelId}>`, inline: true },
+      { name: "🌸 Targeted", value: allPings || "Unknown", inline: false },
       {
-        name: "Pinged",
-        value: allPings || "Unknown",
-        inline: false,
-      },
-      {
-        name: "Deleted Message",
+        name: "🗑️ Deleted Message",
         value: message.content
-          ? message.content.slice(0, 1024)
+          ? `\`\`\`${message.content.slice(0, 900)}\`\`\``
           : "*[no text content]*",
         inline: false,
       },
       {
-        name: "Time",
+        name: "🕐 Detected At",
         value: `<t:${Math.floor(Date.now() / 1000)}:F>`,
         inline: true,
       }
     )
+    .setFooter(FOOTER_GHOST)
     .setTimestamp();
 
   await channel.send({ embeds: [embed] });
