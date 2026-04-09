@@ -4,7 +4,7 @@ import {
   PermissionFlagsBits,
 } from "discord.js";
 import { stickyMessages } from "../data/store.js";
-import { NILOU_TEAL, FOOTER_STICKY, DIVIDER } from "../theme.js";
+import { NILOU_RED, FOOTER_STICKY, DIVIDER } from "../theme.js";
 
 export const data = new SlashCommandBuilder()
   .setName("sticky")
@@ -21,7 +21,7 @@ export const data = new SlashCommandBuilder()
         o.setName("title").setDescription("Embed title").setRequired(false)
       )
       .addStringOption((o) =>
-        o.setName("color").setDescription("Hex color (e.g. #48CAE4)").setRequired(false)
+        o.setName("color").setDescription("Hex color (e.g. #E84057)").setRequired(false)
       )
   )
   .addSubcommand((sub) =>
@@ -40,7 +40,7 @@ export async function execute(interaction) {
     const title      = interaction.options.getString("title") || "🌺 Pinned";
     const colorInput = interaction.options.getString("color");
 
-    let color = NILOU_TEAL;
+    let color = NILOU_RED;
     if (colorInput) {
       const parsed = parseInt(colorInput.replace("#", ""), 16);
       if (!isNaN(parsed)) color = parsed;
@@ -54,11 +54,10 @@ export async function execute(interaction) {
       .setTimestamp();
 
     const sent = await interaction.channel.send({ embeds: [embed] });
-
     stickyMessages.set(key, { content, title, color, lastMessageId: sent.id });
 
     await interaction.reply({
-      content: `🌸 Sticky message set! It will stay at the bottom like Nilou's unwavering dance.`,
+      content: `🌸 Sticky message set! It will stay at the bottom after every new message.`,
       ephemeral: true,
     });
   } else if (sub === "remove") {
@@ -82,7 +81,7 @@ export async function execute(interaction) {
     }
     const sticky = stickyMessages.get(key);
     await interaction.reply({
-      content: `**📌 Current sticky — ${sticky.title}:**\n${sticky.content}`,
+      content: `📌 Current sticky — ${sticky.title}:\n${sticky.content}`,
       ephemeral: true,
     });
   }

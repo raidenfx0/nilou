@@ -3,7 +3,7 @@ import {
   EmbedBuilder,
   PermissionFlagsBits,
 } from "discord.js";
-import { NILOU_TEAL, FOOTER_MAIN } from "../theme.js";
+import { NILOU_RED, FOOTER_MAIN } from "../theme.js";
 
 export const data = new SlashCommandBuilder()
   .setName("embed")
@@ -16,7 +16,7 @@ export const data = new SlashCommandBuilder()
     o.setName("description").setDescription("Embed description").setRequired(true)
   )
   .addStringOption((o) =>
-    o.setName("color").setDescription("Hex color code (e.g. #48CAE4)").setRequired(false)
+    o.setName("color").setDescription("Hex color code (e.g. #E84057)").setRequired(false)
   )
   .addStringOption((o) =>
     o.setName("footer").setDescription("Footer text").setRequired(false)
@@ -32,15 +32,15 @@ export const data = new SlashCommandBuilder()
   );
 
 export async function execute(interaction) {
-  const title       = interaction.options.getString("title");
-  const description = interaction.options.getString("description");
-  const colorInput  = interaction.options.getString("color");
-  const footerText  = interaction.options.getString("footer");
-  const imageUrl    = interaction.options.getString("image");
-  const thumbUrl    = interaction.options.getString("thumbnail");
+  const title         = interaction.options.getString("title");
+  const description   = interaction.options.getString("description");
+  const colorInput    = interaction.options.getString("color");
+  const footerText    = interaction.options.getString("footer");
+  const imageUrl      = interaction.options.getString("image");
+  const thumbUrl      = interaction.options.getString("thumbnail");
   const targetChannel = interaction.options.getChannel("channel") || interaction.channel;
 
-  let color = NILOU_TEAL;
+  let color = NILOU_RED;
   if (colorInput) {
     const parsed = parseInt(colorInput.replace("#", ""), 16);
     if (!isNaN(parsed)) color = parsed;
@@ -49,12 +49,12 @@ export async function execute(interaction) {
   const embed = new EmbedBuilder()
     .setColor(color)
     .setTitle(`✦ ${title}`)
-    .setDescription(`*${description}*`)
+    .setDescription(description)
     .setFooter(footerText ? { text: `🌸 ${footerText}` } : FOOTER_MAIN)
     .setTimestamp();
 
-  if (imageUrl)  embed.setImage(imageUrl);
-  if (thumbUrl)  embed.setThumbnail(thumbUrl);
+  if (imageUrl) embed.setImage(imageUrl);
+  if (thumbUrl) embed.setThumbnail(thumbUrl);
 
   try {
     await targetChannel.send({ embeds: [embed] });
@@ -64,7 +64,7 @@ export async function execute(interaction) {
     });
   } catch (err) {
     await interaction.reply({
-      content: `💧 The waters stirred but the embed failed: ${err.message}`,
+      content: `💧 The embed failed to send: ${err.message}`,
       ephemeral: true,
     });
   }

@@ -1,6 +1,6 @@
 import { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } from "discord.js";
 import { reactionRoles } from "../data/store.js";
-import { NILOU_TEAL, FOOTER_MAIN, DIVIDER } from "../theme.js";
+import { NILOU_RED, FOOTER_MAIN, DIVIDER } from "../theme.js";
 
 export const data = new SlashCommandBuilder()
   .setName("reactionrole")
@@ -93,9 +93,9 @@ export async function execute(interaction) {
     const description = interaction.options.getString("description");
 
     const embed = new EmbedBuilder()
-      .setColor(NILOU_TEAL)
+      .setColor(NILOU_RED)
       .setTitle(`🌺 ✦ ${title}`)
-      .setDescription(`${DIVIDER}\n${description}\n${DIVIDER}\n\n*React below to receive your role~*`)
+      .setDescription(`${DIVIDER}\n${description}\n${DIVIDER}\nReact below to receive your role~`)
       .setFooter(FOOTER_MAIN)
       .setTimestamp();
 
@@ -118,7 +118,7 @@ export async function execute(interaction) {
     });
 
     const embed = new EmbedBuilder()
-      .setColor(NILOU_TEAL)
+      .setColor(NILOU_RED)
       .setTitle("🌺 ✦ Reaction Roles")
       .setDescription(`${DIVIDER}\n${lines.join("\n")}\n${DIVIDER}`)
       .setFooter(FOOTER_MAIN)

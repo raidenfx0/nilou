@@ -1,6 +1,6 @@
 import { Events, EmbedBuilder } from "discord.js";
 import { stickyMessages } from "../data/store.js";
-import { NILOU_TEAL, FOOTER_STICKY, DIVIDER } from "../theme.js";
+import { NILOU_RED, FOOTER_STICKY, DIVIDER } from "../theme.js";
 
 export const name = Events.MessageCreate;
 
@@ -20,7 +20,7 @@ export async function execute(message) {
     }
 
     const embed = new EmbedBuilder()
-      .setColor(sticky.color || NILOU_TEAL)
+      .setColor(sticky.color || NILOU_RED)
       .setTitle(`📌 ✦ ${sticky.title || "Pinned"}`)
       .setDescription(`${DIVIDER}\n${sticky.content}\n${DIVIDER}`)
       .setFooter(FOOTER_STICKY)

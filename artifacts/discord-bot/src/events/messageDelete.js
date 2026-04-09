@@ -7,10 +7,9 @@ export const name = Events.MessageDelete;
 export async function execute(message) {
   if (!message.guild) return;
   if (message.author?.bot) return;
+  if (!ghostPingChannels.has(message.guildId)) return;
 
   const logChannelId = ghostPingChannels.get(message.guildId) ?? null;
-
-  if (!ghostPingChannels.has(message.guildId)) return;
 
   const mentionedUsers = message.mentions?.users;
   const mentionedRoles = message.mentions?.roles;
@@ -29,8 +28,8 @@ export async function execute(message) {
 
   if (!channel) return;
 
-  const userMentions   = mentionedUsers?.map((u) => `<@${u.id}>`).join(", ") || "";
-  const roleMentions   = mentionedRoles?.map((r) => `<@&${r.id}>`).join(", ") || "";
+  const userMentions    = mentionedUsers?.map((u) => `<@${u.id}>`).join(", ") || "";
+  const roleMentions    = mentionedRoles?.map((r) => `<@&${r.id}>`).join(", ") || "";
   const specialMentions = [];
   if (message.content?.includes("@everyone")) specialMentions.push("@everyone");
   if (message.content?.includes("@here"))     specialMentions.push("@here");
@@ -42,11 +41,11 @@ export async function execute(message) {
   const embed = new EmbedBuilder()
     .setColor(NILOU_RED)
     .setTitle("👁️ ✦ Ghost Ping Detected")
-    .setDescription("*The mist does not deceive Nilou's watchful eyes...*")
+    .setDescription("Nilou sees through the mist — someone tried to hide their ping.")
     .addFields(
       {
         name: "🌊 Offender",
-        value: `<@${message.author?.id}> *(${message.author?.tag || "Unknown"})*`,
+        value: `<@${message.author?.id}> (${message.author?.tag || "Unknown"})`,
         inline: true,
       },
       { name: "📍 Channel",  value: `<#${message.channelId}>`, inline: true },
@@ -55,7 +54,7 @@ export async function execute(message) {
         name: "🗑️ Deleted Message",
         value: message.content
           ? `\`\`\`${message.content.slice(0, 900)}\`\`\``
-          : "*[no text content]*",
+          : "(no text content)",
         inline: false,
       },
       {

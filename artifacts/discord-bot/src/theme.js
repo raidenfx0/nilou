@@ -1,8 +1,6 @@
-export const NILOU_TEAL = 0x48cae4;
-export const NILOU_DEEP = 0x0096c7;
-export const NILOU_PINK = 0xffb3c6;
-export const NILOU_GOLD = 0xffd966;
-export const NILOU_RED  = 0xff6b8a;
+export const NILOU_RED      = 0xe84057;
+export const NILOU_RED_DARK = 0xc0392b;
+export const NILOU_RED_SOFT = 0xff6b81;
 
 export const FOOTER_MAIN   = { text: "🌸 Nilou • Dancer of the Zubayr Theater" };
 export const FOOTER_HYDRO  = { text: "💧 Nilou • May the waters guide you" };

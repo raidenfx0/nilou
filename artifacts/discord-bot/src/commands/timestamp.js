@@ -1,14 +1,14 @@
 import { SlashCommandBuilder, EmbedBuilder } from "discord.js";
-import { NILOU_TEAL, FOOTER_HYDRO, DIVIDER } from "../theme.js";
+import { NILOU_RED, FOOTER_HYDRO, DIVIDER } from "../theme.js";
 
 const FORMATS = [
-  { name: "Short Time",       style: "t", example: "3:05 PM" },
-  { name: "Long Time",        style: "T", example: "3:05:00 PM" },
-  { name: "Short Date",       style: "d", example: "01/01/2025" },
-  { name: "Long Date",        style: "D", example: "January 1, 2025" },
-  { name: "Short Date/Time",  style: "f", example: "January 1, 2025 3:05 PM" },
-  { name: "Long Date/Time",   style: "F", example: "Sunday, January 1, 2025 3:05 PM" },
-  { name: "Relative",         style: "R", example: "2 hours ago" },
+  { name: "Short Time",      style: "t", example: "3:05 PM" },
+  { name: "Long Time",       style: "T", example: "3:05:00 PM" },
+  { name: "Short Date",      style: "d", example: "01/01/2025" },
+  { name: "Long Date",       style: "D", example: "January 1, 2025" },
+  { name: "Short Date/Time", style: "f", example: "January 1, 2025 3:05 PM" },
+  { name: "Long Date/Time",  style: "F", example: "Sunday, January 1, 2025 3:05 PM" },
+  { name: "Relative",        style: "R", example: "2 hours ago" },
 ];
 
 export const data = new SlashCommandBuilder()
@@ -24,7 +24,7 @@ export const data = new SlashCommandBuilder()
 export async function execute(interaction) {
   let unixTs;
 
-  const unixInput    = interaction.options.getInteger("unix");
+  const unixInput     = interaction.options.getInteger("unix");
   const datetimeInput = interaction.options.getString("datetime");
 
   if (unixInput) {
@@ -43,15 +43,13 @@ export async function execute(interaction) {
   }
 
   const rows = FORMATS.map(
-    (f) => `\`<t:${unixTs}:${f.style}>\` → <t:${unixTs}:${f.style}> *(${f.name})*`
+    (f) => `\`<t:${unixTs}:${f.style}>\` → <t:${unixTs}:${f.style}> (${f.name})`
   ).join("\n");
 
   const embed = new EmbedBuilder()
-    .setColor(NILOU_TEAL)
+    .setColor(NILOU_RED)
     .setTitle("🕐 ✦ Dynamic Timestamps")
-    .setDescription(
-      `> Unix: \`${unixTs}\`\n${DIVIDER}\n${rows}\n${DIVIDER}\n*Copy any code above and paste it into chat!*`
-    )
+    .setDescription(`Unix: \`${unixTs}\`\n${DIVIDER}\n${rows}\n${DIVIDER}\nCopy any code above and paste it into chat!`)
     .setFooter(FOOTER_HYDRO)
     .setTimestamp();
 

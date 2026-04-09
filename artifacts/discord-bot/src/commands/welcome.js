@@ -4,7 +4,7 @@ import {
   PermissionFlagsBits,
 } from "discord.js";
 import { welcomeChannels } from "../data/store.js";
-import { NILOU_TEAL, FOOTER_HYDRO, DIVIDER } from "../theme.js";
+import { NILOU_RED, FOOTER_HYDRO, DIVIDER } from "../theme.js";
 
 export const data = new SlashCommandBuilder()
   .setName("welcome")
@@ -24,7 +24,7 @@ export const data = new SlashCommandBuilder()
         o.setName("title").setDescription("Embed title").setRequired(false)
       )
       .addStringOption((o) =>
-        o.setName("color").setDescription("Hex color code (e.g. #48CAE4)").setRequired(false)
+        o.setName("color").setDescription("Hex color code (e.g. #E84057)").setRequired(false)
       )
   )
   .addSubcommand((sub) =>
@@ -33,6 +33,12 @@ export const data = new SlashCommandBuilder()
   .addSubcommand((sub) =>
     sub.setName("test").setDescription("Preview the welcome message for yourself")
   );
+
+function ordinal(n) {
+  const s = ["th", "st", "nd", "rd"];
+  const v = n % 100;
+  return s[(v - 20) % 10] || s[v] || s[0];
+}
 
 function buildWelcomeEmbed(member, guild, config) {
   const joinedAt       = Math.floor(Date.now() / 1000);
@@ -44,10 +50,10 @@ function buildWelcomeEmbed(member, guild, config) {
         .replace("{user}", `<@${member.id}>`)
         .replace("{server}", guild.name)
         .replace("{count}", memberCount.toString())
-    : `*The stage lights shimmer as a new dancer arrives...*\n\n${DIVIDER}\n\nWelcome to **${guild.name}**, <@${member.id}>!\nYou are the **${memberCount}${ordinal(memberCount)}** member to join our theater. 🌸\n\n${DIVIDER}`;
+    : `The stage lights shimmer as a new dancer arrives...\n\n${DIVIDER}\n\nWelcome to **${guild.name}**, <@${member.id}>!\nYou are the **${memberCount}${ordinal(memberCount)}** member to join our theater. 🌸\n\n${DIVIDER}`;
 
   return new EmbedBuilder()
-    .setColor(config?.color || NILOU_TEAL)
+    .setColor(config?.color || NILOU_RED)
     .setTitle(`🌸 ✦ ${config?.title || `Welcome to ${guild.name}!`}`)
     .setDescription(description)
     .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
@@ -63,12 +69,6 @@ function buildWelcomeEmbed(member, guild, config) {
     .setTimestamp();
 }
 
-function ordinal(n) {
-  const s = ["th", "st", "nd", "rd"];
-  const v = n % 100;
-  return s[(v - 20) % 10] || s[v] || s[0];
-}
-
 export async function execute(interaction) {
   const sub     = interaction.options.getSubcommand();
   const guildId = interaction.guildId;
@@ -79,7 +79,7 @@ export async function execute(interaction) {
     const title      = interaction.options.getString("title");
     const colorInput = interaction.options.getString("color");
 
-    let color = NILOU_TEAL;
+    let color = NILOU_RED;
     if (colorInput) {
       const parsed = parseInt(colorInput.replace("#", ""), 16);
       if (!isNaN(parsed)) color = parsed;

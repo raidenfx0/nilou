@@ -1,6 +1,6 @@
 import { Events, EmbedBuilder } from "discord.js";
 import { welcomeChannels } from "../data/store.js";
-import { NILOU_TEAL, DIVIDER } from "../theme.js";
+import { NILOU_RED, DIVIDER } from "../theme.js";
 
 export const name = Events.GuildMemberAdd;
 
@@ -26,10 +26,10 @@ export async function execute(member) {
         .replace("{user}", `<@${member.id}>`)
         .replace("{server}", member.guild.name)
         .replace("{count}", memberCount.toString())
-    : `*The stage lights shimmer as a new dancer arrives...*\n\n${DIVIDER}\n\nWelcome to **${member.guild.name}**, <@${member.id}>!\nYou are the **${memberCount}${ordinal(memberCount)}** member to join our theater. 🌸\n\n${DIVIDER}`;
+    : `The stage lights shimmer as a new dancer arrives...\n\n${DIVIDER}\n\nWelcome to **${member.guild.name}**, <@${member.id}>!\nYou are the **${memberCount}${ordinal(memberCount)}** member to join our theater. 🌸\n\n${DIVIDER}`;
 
   const embed = new EmbedBuilder()
-    .setColor(config.color || NILOU_TEAL)
+    .setColor(config.color || NILOU_RED)
     .setTitle(`🌸 ✦ ${config.title || `Welcome to ${member.guild.name}!`}`)
     .setDescription(description)
     .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))

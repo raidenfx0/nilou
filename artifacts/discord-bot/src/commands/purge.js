@@ -3,7 +3,7 @@ import {
   PermissionFlagsBits,
   EmbedBuilder,
 } from "discord.js";
-import { NILOU_TEAL, NILOU_RED, FOOTER_PURGE } from "../theme.js";
+import { NILOU_RED, FOOTER_PURGE } from "../theme.js";
 
 export const data = new SlashCommandBuilder()
   .setName("purge")
@@ -20,8 +20,8 @@ export const data = new SlashCommandBuilder()
   );
 
 export async function execute(interaction) {
-  const amount      = interaction.options.getInteger("amount");
-  const targetUser  = interaction.options.getUser("user");
+  const amount       = interaction.options.getInteger("amount");
+  const targetUser   = interaction.options.getUser("user");
   const containsText = interaction.options.getString("contains");
 
   await interaction.deferReply({ ephemeral: true });
@@ -31,12 +31,12 @@ export async function execute(interaction) {
       limit: targetUser || containsText ? 100 : amount,
     });
 
-    if (targetUser)    messages = messages.filter((m) => m.author.id === targetUser.id);
-    if (containsText)  messages = messages.filter((m) => m.content.toLowerCase().includes(containsText.toLowerCase()));
+    if (targetUser)   messages = messages.filter((m) => m.author.id === targetUser.id);
+    if (containsText) messages = messages.filter((m) => m.content.toLowerCase().includes(containsText.toLowerCase()));
 
-    const toDelete = messages.first(amount);
-    const now = Date.now();
-    const twoWeeks = 14 * 24 * 60 * 60 * 1000;
+    const toDelete  = messages.first(amount);
+    const now       = Date.now();
+    const twoWeeks  = 14 * 24 * 60 * 60 * 1000;
     const deletable = toDelete.filter((m) => now - m.createdTimestamp < twoWeeks);
 
     if (deletable.length === 0) {
@@ -48,19 +48,19 @@ export async function execute(interaction) {
     const deleted = await interaction.channel.bulkDelete(deletable, true);
 
     const embed = new EmbedBuilder()
-      .setColor(NILOU_TEAL)
+      .setColor(NILOU_RED)
       .setTitle("🌊 ✦ Stage Cleared")
       .setDescription(`Nilou swept **${deleted.size}** message${deleted.size !== 1 ? "s" : ""} from the stage.`)
       .addFields(
-        { name: "🗑️ Deleted",  value: `${deleted.size} messages`, inline: true },
-        { name: "📍 Channel",  value: `<#${interaction.channelId}>`, inline: true },
-        { name: "🌸 By",       value: `<@${interaction.user.id}>`, inline: true }
+        { name: "🗑️ Deleted", value: `${deleted.size} messages`, inline: true },
+        { name: "📍 Channel", value: `<#${interaction.channelId}>`, inline: true },
+        { name: "🌸 By",      value: `<@${interaction.user.id}>`, inline: true }
       )
       .setFooter(FOOTER_PURGE)
       .setTimestamp();
 
-    if (targetUser)    embed.addFields({ name: "👤 From User",  value: `<@${targetUser.id}>`, inline: true });
-    if (containsText)  embed.addFields({ name: "🔍 Containing", value: `\`${containsText}\``, inline: true });
+    if (targetUser)   embed.addFields({ name: "👤 From User",  value: `<@${targetUser.id}>`, inline: true });
+    if (containsText) embed.addFields({ name: "🔍 Containing", value: `\`${containsText}\``, inline: true });
 
     await interaction.editReply({ embeds: [embed] });
   } catch (err) {
