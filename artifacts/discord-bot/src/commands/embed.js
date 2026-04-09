@@ -49,7 +49,7 @@ export async function execute(interaction) {
   const embed = new EmbedBuilder()
     .setColor(color)
     .setTitle(`✦ ${title}`)
-    .setDescription(description)
+    .setDescription(description.replace(/\\n/g, "\n"))
     .setFooter(footerText ? { text: `🌸 ${footerText}` } : FOOTER_MAIN)
     .setTimestamp();
 

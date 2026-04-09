@@ -11,6 +11,9 @@ import * as pingCmd        from "../commands/ping.js";
 import * as botinfoCmd     from "../commands/botinfo.js";
 import * as serverinfoCmd  from "../commands/serverinfo.js";
 import * as countdownCmd   from "../commands/countdown.js";
+import * as helpCmd        from "../commands/help.js";
+import * as afkCmd         from "../commands/afk.js";
+import * as ticketCmd      from "../commands/ticket.js";
 
 export function loadCommands(client) {
   client.commands = new Collection();
@@ -28,6 +31,9 @@ export function loadCommands(client) {
     botinfoCmd,
     serverinfoCmd,
     countdownCmd,
+    helpCmd,
+    afkCmd,
+    ticketCmd,
   ];
 
   for (const cmd of commands) {
