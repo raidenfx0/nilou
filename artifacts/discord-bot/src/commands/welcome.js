@@ -1,15 +1,14 @@
 import {
   SlashCommandBuilder,
   EmbedBuilder,
-  PermissionFlagsBits,
 } from "discord.js";
 import { welcomeChannels } from "../data/store.js";
 import { NILOU_RED, FOOTER_HYDRO, DIVIDER } from "../theme.js";
+import { isAdmin, denyAdmin } from "../utils/adminCheck.js";
 
 export const data = new SlashCommandBuilder()
   .setName("welcome")
   .setDescription("Configure welcome messages for new members")
-  .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
   .addSubcommand((sub) =>
     sub
       .setName("set")
@@ -70,6 +69,7 @@ function buildWelcomeEmbed(member, guild, config) {
 }
 
 export async function execute(interaction) {
+  if (!isAdmin(interaction.member)) return denyAdmin(interaction);
   const sub     = interaction.options.getSubcommand();
   const guildId = interaction.guildId;
 

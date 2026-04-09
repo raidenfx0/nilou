@@ -1,10 +1,10 @@
-import { SlashCommandBuilder, PermissionFlagsBits } from "discord.js";
+import { SlashCommandBuilder } from "discord.js";
 import { ghostPingChannels } from "../data/store.js";
+import { isAdmin, denyAdmin } from "../utils/adminCheck.js";
 
 export const data = new SlashCommandBuilder()
   .setName("ghostping")
   .setDescription("Configure ghost ping detection")
-  .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
   .addSubcommand((sub) =>
     sub
       .setName("enable")
@@ -21,6 +21,7 @@ export const data = new SlashCommandBuilder()
   );
 
 export async function execute(interaction) {
+  if (!isAdmin(interaction.member)) return denyAdmin(interaction);
   const sub     = interaction.options.getSubcommand();
   const guildId = interaction.guildId;
 

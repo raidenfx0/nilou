@@ -1,15 +1,14 @@
 import {
   SlashCommandBuilder,
   EmbedBuilder,
-  PermissionFlagsBits,
 } from "discord.js";
 import { stickyMessages } from "../data/store.js";
 import { NILOU_RED, FOOTER_STICKY, DIVIDER } from "../theme.js";
+import { isAdmin, denyAdmin } from "../utils/adminCheck.js";
 
 export const data = new SlashCommandBuilder()
   .setName("sticky")
   .setDescription("Manage sticky messages in a channel")
-  .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
   .addSubcommand((sub) =>
     sub
       .setName("set")
@@ -32,6 +31,7 @@ export const data = new SlashCommandBuilder()
   );
 
 export async function execute(interaction) {
+  if (!isAdmin(interaction.member)) return denyAdmin(interaction);
   const sub = interaction.options.getSubcommand();
   const key = `${interaction.guildId}:${interaction.channelId}`;
 

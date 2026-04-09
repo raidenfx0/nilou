@@ -10,3 +10,7 @@ export const reactionRoles = new Map();
 export const welcomeChannels = new Map();
 
 export const ghostPingChannels = new Map();
+
+export const adminRoles = new Map();
+
+export const countdowns = new Map();

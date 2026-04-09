@@ -1,14 +1,13 @@
 import {
   SlashCommandBuilder,
   EmbedBuilder,
-  PermissionFlagsBits,
 } from "discord.js";
 import { NILOU_RED, FOOTER_MAIN } from "../theme.js";
+import { isAdmin, denyAdmin } from "../utils/adminCheck.js";
 
 export const data = new SlashCommandBuilder()
   .setName("embed")
   .setDescription("Send a beautiful Nilou-styled embed message")
-  .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
   .addStringOption((o) =>
     o.setName("title").setDescription("Embed title").setRequired(true)
   )
@@ -32,6 +31,7 @@ export const data = new SlashCommandBuilder()
   );
 
 export async function execute(interaction) {
+  if (!isAdmin(interaction.member)) return denyAdmin(interaction);
   const title         = interaction.options.getString("title");
   const description   = interaction.options.getString("description");
   const colorInput    = interaction.options.getString("color");

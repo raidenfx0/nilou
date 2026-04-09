@@ -1,11 +1,11 @@
-import { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } from "discord.js";
+import { SlashCommandBuilder, EmbedBuilder } from "discord.js";
 import { reactionRoles } from "../data/store.js";
 import { NILOU_RED, FOOTER_MAIN, DIVIDER } from "../theme.js";
+import { isAdmin, denyAdmin } from "../utils/adminCheck.js";
 
 export const data = new SlashCommandBuilder()
   .setName("reactionrole")
   .setDescription("Manage reaction roles")
-  .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
   .addSubcommand((sub) =>
     sub
       .setName("add")
@@ -34,6 +34,7 @@ export const data = new SlashCommandBuilder()
   );
 
 export async function execute(interaction) {
+  if (!isAdmin(interaction.member)) return denyAdmin(interaction);
   const sub     = interaction.options.getSubcommand();
   const guildId = interaction.guildId;
 

@@ -1,14 +1,13 @@
 import {
   SlashCommandBuilder,
-  PermissionFlagsBits,
   EmbedBuilder,
 } from "discord.js";
 import { NILOU_RED, FOOTER_PURGE } from "../theme.js";
+import { isAdmin, denyAdmin } from "../utils/adminCheck.js";
 
 export const data = new SlashCommandBuilder()
   .setName("purge")
   .setDescription("Bulk delete messages from a channel")
-  .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
   .addIntegerOption((o) =>
     o.setName("amount").setDescription("Number of messages to delete (1–100)").setMinValue(1).setMaxValue(100).setRequired(true)
   )
@@ -20,6 +19,7 @@ export const data = new SlashCommandBuilder()
   );
 
 export async function execute(interaction) {
+  if (!isAdmin(interaction.member)) return denyAdmin(interaction);
   const amount       = interaction.options.getInteger("amount");
   const targetUser   = interaction.options.getUser("user");
   const containsText = interaction.options.getString("contains");
