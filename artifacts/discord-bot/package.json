@@ -9,10 +9,10 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "discord.js": "^14.19.3"
-  },
-  "dependencies": {
     "discord.js": "^14.19.3",
     "express": "^4.18.2"
   },
+  "devDependencies": {
+    "@types/node": "20.x.x"
+  }
 }
