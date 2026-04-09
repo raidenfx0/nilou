@@ -1,3 +1,15 @@
+import express from 'express';
+const app = express();
+
+// This tells Render "I am alive!"
+app.get('/', (req, res) => {
+  res.send('Bot is running!');
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Keep-alive server is running on port ${PORT}`);
+});
 import {
   Client,
   GatewayIntentBits,
