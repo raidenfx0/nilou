@@ -52,6 +52,13 @@ client.once(Events.ClientReady, async (readyClient) => {
   const commandsJson = [...client.commands.values()].map((cmd) => cmd.data.toJSON());
   const appId = readyClient.user.id;
 
+  try {
+    await rest.put(Routes.applicationCommands(appId), { body: [] });
+    console.log(`🧹 Cleared global commands`);
+  } catch (err) {
+    console.error("❌ Failed to clear global commands:", err.message);
+  }
+
   const guilds = readyClient.guilds.cache;
   console.log(`🔄 Registering ${commandsJson.length} commands to ${guilds.size} server(s)...`);
 
