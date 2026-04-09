@@ -33,24 +33,39 @@ const client = new Client({
 loadCommands(client);
 loadEvents(client);
 
+const rest = new REST().setToken(TOKEN);
+
+async function registerCommandsToGuild(guildId, appId, commandsJson) {
+  try {
+    await rest.put(Routes.applicationGuildCommands(appId, guildId), {
+      body: commandsJson,
+    });
+    console.log(`✅ Commands registered to guild ${guildId}`);
+  } catch (err) {
+    console.error(`❌ Failed to register to guild ${guildId}:`, err.message);
+  }
+}
+
 client.once(Events.ClientReady, async (readyClient) => {
   console.log(`✅ Logged in as ${readyClient.user.tag}`);
 
-  const commands = [...client.commands.values()].map((cmd) =>
-    cmd.data.toJSON()
-  );
+  const commandsJson = [...client.commands.values()].map((cmd) => cmd.data.toJSON());
+  const appId = readyClient.user.id;
 
-  const rest = new REST().setToken(TOKEN);
+  const guilds = readyClient.guilds.cache;
+  console.log(`🔄 Registering ${commandsJson.length} commands to ${guilds.size} server(s)...`);
 
-  try {
-    console.log(`🔄 Registering ${commands.length} slash commands globally...`);
-    await rest.put(Routes.applicationCommands(readyClient.user.id), {
-      body: commands,
-    });
-    console.log(`✅ Slash commands registered successfully.`);
-  } catch (err) {
-    console.error("❌ Failed to register slash commands:", err);
+  for (const [guildId] of guilds) {
+    await registerCommandsToGuild(guildId, appId, commandsJson);
   }
+
+  console.log(`✅ All guild commands registered — commands are available immediately!`);
+});
+
+client.on(Events.GuildCreate, async (guild) => {
+  const commandsJson = [...client.commands.values()].map((cmd) => cmd.data.toJSON());
+  console.log(`🌸 Joined new server: ${guild.name} — registering commands...`);
+  await registerCommandsToGuild(guild.id, client.user.id, commandsJson);
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
