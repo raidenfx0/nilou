@@ -11,8 +11,8 @@ import { NILOU_RED, FOOTER_MAIN, DIVIDER } from "../theme.js";
 import { tickets, ticketConfig } from "../data/store.js";
 import { isAdmin, denyAdmin } from "../utils/adminCheck.js";
 
-// Global map to track users currently creating a ticket to prevent duplicates
-const activeCreations = new Map();
+// Strict lock to prevent duplicate creation across buttons and commands
+const activeCreations = new Set();
 
 // --- SLASH COMMAND DEFINITION ---
 export const data = new SlashCommandBuilder()
@@ -30,11 +30,11 @@ export const data = new SlashCommandBuilder()
     sub
       .setName("setup")
       .setDescription("Configure ticket system settings (admin only)")
-      .addStringOption((o) => o.setName("support_category").setDescription("Category ID for Support tickets").setRequired(false))
-      .addStringOption((o) => o.setName("appeal_category").setDescription("Category ID for Appeal tickets").setRequired(false))
-      .addStringOption((o) => o.setName("partnership_category").setDescription("Category ID for Partnership tickets").setRequired(false))
-      .addStringOption((o) => o.setName("staff_role").setDescription("Staff Role ID or @Role").setRequired(false))
-      .addStringOption((o) => o.setName("log_channel").setDescription("Channel ID to log ticket activity").setRequired(false))
+      .addStringOption((o) => o.setName("support_category").setDescription("Category ID for Support").setRequired(false))
+      .addStringOption((o) => o.setName("appeal_category").setDescription("Category ID for Appeal").setRequired(false))
+      .addStringOption((o) => o.setName("partnership_category").setDescription("Category ID for Partnership").setRequired(false))
+      .addStringOption((o) => o.setName("staff_role").setDescription("Staff Role (ID or Tag)").setRequired(false))
+      .addStringOption((o) => o.setName("log_channel").setDescription("Log Channel (ID or Tag)").setRequired(false))
   )
   .addSubcommand((sub) =>
     sub
@@ -43,7 +43,7 @@ export const data = new SlashCommandBuilder()
       .addStringOption((o) =>
         o.setName("type")
           .setDescription("Select the type of ticket")
-          .setRequired(true) // THIS IS NOW HARD-REQUIRED
+          .setRequired(true) // Explicitly required
           .addChoices(
             { name: "Support", value: "Support" },
             { name: "Appeal", value: "Appeal" },
@@ -74,33 +74,28 @@ export async function execute(interaction) {
   if (sub === "setup") {
     if (!isAdmin(interaction.member)) return denyAdmin(interaction);
 
-    let staffRoleInput = interaction.options.getString("staff_role");
-
-    // Clean mention format if user used @role instead of ID
-    if (staffRoleInput) {
-      staffRoleInput = staffRoleInput.replace(/[<@&>]/g, ""); 
-      const roleCheck = interaction.guild.roles.cache.get(staffRoleInput);
-      if (!roleCheck) {
-        return interaction.reply({ 
-          content: `❌ Invalid Role! I couldn't find a role with ID \`${staffRoleInput}\`. Please make sure you provide a valid ID or tag a real role.`, 
-          ephemeral: true 
-        });
-      }
-    }
+    // Helper to extract raw ID from mentions (<@&ID>, <#ID>, etc)
+    const getRawId = (str) => str ? str.replace(/[^0-9]/g, "") : null;
 
     const updates = {
-      supportCategoryId: interaction.options.getString("support_category")?.replace(/[<#>]/g, ""),
-      appealCategoryId: interaction.options.getString("appeal_category")?.replace(/[<#>]/g, ""),
-      partnershipCategoryId: interaction.options.getString("partnership_category")?.replace(/[<#>]/g, ""),
-      staffRoleId: staffRoleInput,
-      logChannelId: interaction.options.getString("log_channel")?.replace(/[<#>]/g, ""),
+      supportCategoryId: getRawId(interaction.options.getString("support_category")),
+      appealCategoryId: getRawId(interaction.options.getString("appeal_category")),
+      partnershipCategoryId: getRawId(interaction.options.getString("partnership_category")),
+      staffRoleId: getRawId(interaction.options.getString("staff_role")),
+      logChannelId: getRawId(interaction.options.getString("log_channel")),
     };
+
+    // Role validation
+    if (updates.staffRoleId) {
+      const role = interaction.guild.roles.cache.get(updates.staffRoleId);
+      if (!role) return interaction.reply({ content: "❌ Invalid Role ID/Tag. Please try again.", ephemeral: true });
+    }
 
     const existing = ticketConfig.get(interaction.guildId) || {};
     Object.keys(updates).forEach(k => { if (updates[k]) existing[k] = updates[k]; });
     ticketConfig.set(interaction.guildId, existing);
 
-    return interaction.reply({ content: "🌸 Ticket configuration updated! I also cleaned up any extra tags from the IDs you provided.", ephemeral: true });
+    return interaction.reply({ content: "🌸 Ticket configuration updated! Tags and mentions were automatically converted to IDs.", ephemeral: true });
   }
 
   // 2. PANEL COMMAND
@@ -110,7 +105,7 @@ export async function execute(interaction) {
     const embed = new EmbedBuilder()
       .setColor(NILOU_RED)
       .setTitle("✦ Support Tickets")
-      .setDescription(`${DIVIDER}\n🌸 Click one of the buttons below to open a ticket.\n\n🎫 **Support**\n⚖️ **Appeal**\n🤝 **Partnership**\n${DIVIDER}`)
+      .setDescription(`${DIVIDER}\n🌸 Click a button to open a ticket.\n\n🎫 **Support**\n⚖️ **Appeal**\n🤝 **Partnership**\n${DIVIDER}`)
       .setFooter(FOOTER_MAIN);
 
     const row = new ActionRowBuilder().addComponents(
@@ -124,14 +119,13 @@ export async function execute(interaction) {
 
   // 3. OPEN COMMAND (Slash)
   if (sub === "open") {
-    const type = interaction.options.getString("type");
+    const type = interaction.options.getString("type"); // Required check handled by Discord
     const reason = interaction.options.getString("reason") || "No reason provided";
 
-    // Defer immediately to stop Discord from thinking the bot is dead
     await interaction.deferReply({ ephemeral: true });
 
     const result = await openTicket({ guild: interaction.guild, user: interaction.user, type, reason });
-    return interaction.editReply({ content: result.error ? `❌ ${result.error}` : `🌸 Your ticket has been opened in ${result.channel}!` });
+    return interaction.editReply({ content: result.error ? `❌ ${result.error}` : `🌸 Your ticket is open: ${result.channel}!` });
   }
 
   // 4. CLOSE COMMAND
@@ -140,44 +134,31 @@ export async function execute(interaction) {
     const ticket = tickets.get(ticketId);
 
     if (!ticket && !interaction.channel.name.startsWith("ticket-")) {
-      return interaction.reply({ content: "❌ This is not a recognized ticket channel.", ephemeral: true });
+      return interaction.reply({ content: "❌ Not a ticket channel.", ephemeral: true });
     }
 
     if (ticket && ticket.userId !== interaction.user.id && !isAdmin(interaction.member)) {
-      return interaction.reply({ content: "❌ Only the ticket owner or staff can close this.", ephemeral: true });
+      return interaction.reply({ content: "❌ You cannot close this ticket.", ephemeral: true });
     }
 
     await interaction.reply({ embeds: [closeEmbed(interaction.user)] });
-    return closeTicket(interaction.channel, ticket || { type: "Unknown", userId: interaction.user.id }, ticketId, interaction.user, interaction.guild);
+    return closeTicket(interaction.channel, ticket || { type: "Manual", userId: interaction.user.id }, ticketId, interaction.user, interaction.guild);
   }
 
-  // 5. ADD USER COMMAND
-  if (sub === "add") {
-    const ticketId = `${interaction.guildId}:${interaction.channelId}`;
-    if (!tickets.has(ticketId) && !interaction.channel.name.startsWith("ticket-")) {
-      return interaction.reply({ content: "❌ Not a ticket channel.", ephemeral: true });
+  // 5. ADD/REMOVE USERS
+  if (sub === "add" || sub === "remove") {
+    if (!isAdmin(interaction.member)) return denyAdmin(interaction);
+    const targetUser = interaction.options.getUser("user");
+
+    if (sub === "add") {
+      await interaction.channel.permissionOverwrites.create(targetUser.id, {
+        ViewChannel: true, SendMessages: true, ReadMessageHistory: true, AttachFiles: true
+      });
+      return interaction.reply({ content: `🌸 Added ${targetUser} to the ticket.` });
+    } else {
+      await interaction.channel.permissionOverwrites.delete(targetUser.id);
+      return interaction.reply({ content: `🌸 Removed ${targetUser} from the ticket.` });
     }
-    if (!isAdmin(interaction.member)) return denyAdmin(interaction);
-
-    const userToAdd = interaction.options.getUser("user");
-    await interaction.channel.permissionOverwrites.create(userToAdd.id, {
-      ViewChannel: true, SendMessages: true, ReadMessageHistory: true, AttachFiles: true
-    });
-    return interaction.reply({ content: `🌸 Added ${userToAdd} to the ticket.` });
-  }
-
-  // 6. REMOVE USER COMMAND
-  if (sub === "remove") {
-    const ticketId = `${interaction.guildId}:${interaction.channelId}`;
-    const ticket = tickets.get(ticketId);
-    if (!ticket) return interaction.reply({ content: "❌ Not a ticket channel.", ephemeral: true });
-    if (!isAdmin(interaction.member)) return denyAdmin(interaction);
-
-    const userToRemove = interaction.options.getUser("user");
-    if (userToRemove.id === ticket.userId) return interaction.reply({ content: "❌ You cannot remove the ticket owner!", ephemeral: true });
-
-    await interaction.channel.permissionOverwrites.delete(userToRemove.id);
-    return interaction.reply({ content: `🌸 Removed ${userToRemove} from the ticket.` });
   }
 }
 
@@ -186,26 +167,22 @@ export async function execute(interaction) {
 export async function openTicket({ guild, user, type, reason }) {
   const lockKey = `${guild.id}-${user.id}`;
 
-  // Strict Creation Lock
   if (activeCreations.has(lockKey)) {
-    return { error: "You are already creating a ticket! Please wait." };
+    return { error: "A ticket is already being created for you. Please wait." };
   }
 
-  activeCreations.set(lockKey, true);
+  // Set lock
+  activeCreations.add(lockKey);
 
   try {
     const config = ticketConfig.get(guild.id) || {};
 
-    // Check if user already has a ticket of this type open to prevent spam
-    const existingTicket = [...tickets.values()].find(t => t.userId === user.id && t.guildId === guild.id && t.open && t.type === type);
-    if (existingTicket) {
-      return { error: `You already have an open **${type}** ticket!` };
-    }
+    // Check for existing open ticket of SAME type to prevent accidental doubles
+    const existing = [...tickets.values()].find(t => t.userId === user.id && t.guildId === guild.id && t.open && t.type === type);
+    if (existing) return { error: `You already have an open **${type}** ticket!` };
 
-    // Category routing
     const categoryId = type === "Appeal" ? config.appealCategoryId : type === "Partnership" ? config.partnershipCategoryId : config.supportCategoryId;
 
-    // Permissions
     const overwrites = [
       { id: guild.id, deny: [PermissionFlagsBits.ViewChannel] },
       { id: user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles] },
@@ -213,8 +190,7 @@ export async function openTicket({ guild, user, type, reason }) {
     ];
 
     if (config.staffRoleId) {
-      const role = guild.roles.cache.get(config.staffRoleId);
-      if (role) overwrites.push({ id: config.staffRoleId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] });
+      overwrites.push({ id: config.staffRoleId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] });
     }
 
     const channel = await guild.channels.create({
@@ -222,46 +198,42 @@ export async function openTicket({ guild, user, type, reason }) {
       type: ChannelType.GuildText,
       parent: categoryId || null,
       permissionOverwrites: overwrites,
-      topic: `${type} Ticket | User: ${user.tag} | ID: ${user.id}`
+      topic: `${type} | ${user.tag}`
     });
 
-    const ticketId = `${guild.id}:${channel.id}`;
-    tickets.set(ticketId, { 
-      guildId: guild.id, 
-      userId: user.id, 
-      channelId: channel.id, 
-      type, 
-      open: true, 
-      openedAt: Date.now() 
+    tickets.set(`${guild.id}:${channel.id}`, { 
+      guildId: guild.id, userId: user.id, channelId: channel.id, type, open: true 
     });
 
     const embed = new EmbedBuilder()
       .setColor(NILOU_RED)
       .setTitle(`✦ ${type} Ticket`)
-      .setDescription(`${DIVIDER}\n🌸 Welcome ${user}!\n\n**Reason:** ${reason}\n\nPlease wait for staff assistance.\n${DIVIDER}`)
+      .setDescription(`${DIVIDER}\n🌸 Welcome ${user}!\nReason: **${reason}**\n${DIVIDER}`)
       .setFooter(FOOTER_MAIN);
 
     const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId("close_ticket").setLabel("Close Ticket").setStyle(ButtonStyle.Danger).setEmoji("🔒")
+      new ButtonBuilder().setCustomId("close_ticket").setLabel("Close").setStyle(ButtonStyle.Danger).setEmoji("🔒")
     );
 
-    const ping = config.staffRoleId ? `<@&${config.staffRoleId}> ${user}` : `${user}`;
-    await channel.send({ content: ping, embeds: [embed], components: [row] });
+    await channel.send({ 
+      content: config.staffRoleId ? `<@&${config.staffRoleId}> ${user}` : `${user}`, 
+      embeds: [embed], 
+      components: [row] 
+    });
 
     return { channel };
   } catch (err) {
-    console.error("Ticket Error:", err);
-    return { error: `Failed to create ticket: ${err.message}` };
+    console.error(err);
+    return { error: "Failed to create channel. Check my permissions." };
   } finally {
-    // Release lock after a short delay to ensure Discord interactions settle
-    setTimeout(() => activeCreations.delete(lockKey), 2000);
+    // Release lock after delay
+    setTimeout(() => activeCreations.delete(lockKey), 3000);
   }
 }
 
 export async function closeTicket(channel, ticket, ticketId, user, guild) {
   try {
     const config = ticketConfig.get(guild.id) || {};
-
     if (tickets.has(ticketId)) {
       const data = tickets.get(ticketId);
       data.open = false;
@@ -273,8 +245,8 @@ export async function closeTicket(channel, ticket, ticketId, user, guild) {
       if (logCh) {
         const log = new EmbedBuilder()
           .setColor(NILOU_RED)
-          .setTitle("✦ Ticket Logs")
-          .setDescription(`**Status:** Closed\n**Type:** ${ticket.type || "Unknown"}\n**User:** <@${ticket.userId}>\n**Closed By:** ${user}`)
+          .setTitle("✦ Ticket Closed")
+          .setDescription(`User: <@${ticket.userId}>\nType: ${ticket.type}\nClosed By: ${user}`)
           .setTimestamp();
         logCh.send({ embeds: [log] }).catch(() => {});
       }
@@ -286,15 +258,13 @@ export async function closeTicket(channel, ticket, ticketId, user, guild) {
         tickets.delete(ticketId);
       } catch (err) {}
     }, 5000);
-  } catch (err) {
-    console.error("Close Error:", err);
-  }
+  } catch (err) {}
 }
 
 export function closeEmbed(user) {
   return new EmbedBuilder()
     .setColor(NILOU_RED)
     .setTitle("✦ Closing Ticket")
-    .setDescription(`${DIVIDER}\n🌸 This ticket is being closed by ${user}.\nChannel will be deleted in **5 seconds**.\n${DIVIDER}`)
+    .setDescription(`${DIVIDER}\n🌸 Ticket closing by ${user}.\nDeleting in **5 seconds**.\n${DIVIDER}`)
     .setFooter(FOOTER_MAIN);
 }
