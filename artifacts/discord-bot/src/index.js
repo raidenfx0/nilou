@@ -30,6 +30,7 @@ import {
 import { NILOU_RED, FOOTER_MAIN, DIVIDER } from "./theme.js";
 import { isAdmin } from "./utils/adminCheck.js";
 import { buildCountdownEmbed } from "./commands/countdown.js";
+import { openTicket, closeTicket, closeEmbed } from "./commands/ticket.js";
 
 const TOKEN = process.env.DISCORD_BOT_TOKEN;
 if (!TOKEN) {
@@ -116,12 +117,33 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 
   if (interaction.isButton()) {
-    const parts    = interaction.customId.split(":");
-    const action   = parts[0];
-    const ticketId = parts[1];
+    const id = interaction.customId;
 
-    if (action === "ticket_close") {
-      const ticket = tickets.get(ticketId);
+    if (id === "btn_support" || id === "btn_appeal" || id === "btn_partnership") {
+      const TYPE_MAP = { btn_support: "Support", btn_appeal: "Appeal", btn_partnership: "Partnership" };
+      const type     = TYPE_MAP[id];
+
+      await interaction.deferReply({ ephemeral: true });
+
+      const result = await openTicket({
+        guild:  interaction.guild,
+        user:   interaction.user,
+        type,
+        reason: "Opened via panel",
+      });
+
+      if (result.error) {
+        await interaction.editReply({ content: `❌ ${result.error}` });
+      } else {
+        await interaction.editReply({ content: `🌸 Your **${type}** ticket has been opened in ${result.channel}!` });
+      }
+      return;
+    }
+
+    if (id === "close_ticket" || id.startsWith("ticket_close:")) {
+      const ticketId = `${interaction.guildId}:${interaction.channelId}`;
+      const ticket   = tickets.get(ticketId);
+
       if (!ticket || !ticket.open) {
         await interaction.reply({ content: "❌ This ticket is already closed.", ephemeral: true });
         return;
@@ -130,39 +152,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
         await interaction.reply({ content: "❌ Only the ticket owner or an admin can close this.", ephemeral: true });
         return;
       }
-      ticket.open = false;
-      tickets.set(ticketId, ticket);
 
-      const closeEmbed = new EmbedBuilder()
-        .setColor(NILOU_RED)
-        .setTitle("✦ Ticket Closed")
-        .setDescription(`${DIVIDER}\n🌸 Closed by ${interaction.user}.\nThis channel will be deleted in 5 seconds.\n${DIVIDER}`)
-        .setFooter(FOOTER_MAIN)
-        .setTimestamp();
-
-      await interaction.reply({ embeds: [closeEmbed] });
-
-      const config = ticketConfig.get(interaction.guildId);
-      if (config?.logChannelId) {
-        const logCh = interaction.guild.channels.cache.get(config.logChannelId);
-        if (logCh) {
-          logCh.send({
-            embeds: [
-              new EmbedBuilder()
-                .setColor(NILOU_RED)
-                .setTitle("✦ Ticket Closed")
-                .setDescription(`Closed by: ${interaction.user.tag}\nChannel: <#${interaction.channelId}>`)
-                .setFooter(FOOTER_MAIN)
-                .setTimestamp(),
-            ],
-          }).catch(() => {});
-        }
-      }
-
-      setTimeout(() => {
-        interaction.channel.delete().catch(() => {});
-        tickets.delete(ticketId);
-      }, 5000);
+      await interaction.reply({ embeds: [closeEmbed(interaction.user)] });
+      await closeTicket(interaction.channel, ticket, ticketId, interaction.user, interaction.guild);
+      return;
     }
   }
 });
