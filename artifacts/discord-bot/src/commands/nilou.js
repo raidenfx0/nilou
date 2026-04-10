@@ -3,15 +3,15 @@ import { NILOU_RED, FOOTER_MAIN, DIVIDER } from "../theme.js";
 
 /**
  * Nilou Image Database
- * Only using links verified and provided by the user.
+ * Using direct i.pinimg.com links optimized for Discord embedding.
  */
 const NILOU_LINKS = [
   "https://i.pinimg.com/736x/5a/14/1f/5a141f04de343cacd31050521fb61e24.jpg",
-  "https://i.pinimg.com/1200x/d7/ab/1f/d7ab1f31912239283962bf19f13a794c.jpg",
+  "https://i.pinimg.com/736x/d7/ab/1f/d7ab1f31912239283962bf19f13a794c.jpg",
   "https://i.pinimg.com/736x/a6/20/a3/a620a3ae8c6f8e22f3258053a812674.jpg",
-  "https://i.pinimg.com/1200x/6b/7b/cd/6b7bcd55563fa857c9db212ee75fe017.jpg",
-  "https://i.pinimg.com/1200x/67/7c/12/677c12ab88baf61605c8ce92c42ac3bd.jpg",
-  "https://i.pinimg.com/1200x/42/8b/87/428b87055e17039c405abf95f12ca616.jpg"
+  "https://i.pinimg.com/736x/6b/7b/cd/6b7bcd55563fa857c9db212ee75fe017.jpg",
+  "https://i.pinimg.com/736x/67/7c/12/677c12ab88baf61605c8ce92c42ac3bd.jpg",
+  "https://i.pinimg.com/736x/42/8b/87/428b87055e17039c405abf95f12ca616.jpg"
 ];
 
 const CAPTIONS = [
@@ -36,24 +36,31 @@ export async function execute(interaction) {
   const image = NILOU_LINKS[Math.floor(Math.random() * NILOU_LINKS.length)];
   const caption = CAPTIONS[Math.floor(Math.random() * CAPTIONS.length)];
 
-  // Construct the rich embed
+  // Construct the rich embed matching your working embed style
   const embed = new EmbedBuilder()
     .setColor(NILOU_RED)
     .setTitle("✦ Nilou — Dancer of the Zubayr Theater")
     .setDescription(`${DIVIDER}\n${caption}\n${DIVIDER}`)
     .setImage(image)
-    .setFooter(FOOTER_MAIN)
+    .setFooter(FOOTER_MAIN) // Matching your working embed's footer style
     .setTimestamp();
 
   try {
-    // Reply to the user with the final embed
+    // We use interaction.reply because this is a Slash Command
     await interaction.reply({ embeds: [embed] });
   } catch (error) {
     console.error("Error displaying Nilou image:", error);
-    // User-friendly error message if something goes wrong
-    await interaction.reply({ 
-      content: "The stage is being prepared, please try again in a moment!", 
+
+    // Check if we already replied to avoid double-reply errors
+    const errorResponse = { 
+      content: "💧 The stage is being prepared, please try again!", 
       ephemeral: true 
-    });
+    };
+
+    if (interaction.replied || interaction.deferred) {
+      await interaction.followUp(errorResponse);
+    } else {
+      await interaction.reply(errorResponse);
+    }
   }
 }
