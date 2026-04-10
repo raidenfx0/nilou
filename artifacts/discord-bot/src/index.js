@@ -90,6 +90,14 @@ client.on(Events.GuildCreate, async (guild) => {
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
+  if (interaction.isAutocomplete()) {
+    const command = client.commands.get(interaction.commandName);
+    if (command?.autocomplete) {
+      try { await command.autocomplete(interaction); } catch { await interaction.respond([]).catch(() => {}); }
+    }
+    return;
+  }
+
   if (interaction.isChatInputCommand()) {
     const command = client.commands.get(interaction.commandName);
     if (!command) return;

@@ -17,29 +17,23 @@ import * as ticketCmd       from "../commands/ticket.js";
 import * as giveawayCmd     from "../commands/giveaway.js";
 import * as triggerCmd      from "../commands/trigger.js";
 import * as nilouCmd        from "../commands/nilou.js";
+import * as registerCmd     from "../commands/register.js";
+import * as aboutCmd        from "../commands/about.js";
+import * as profileCmd      from "../commands/profile.js";
+import * as listCmd         from "../commands/list.js";
+import * as buildCmd        from "../commands/build.js";
+import * as cvCalcCmd       from "../commands/cv_calc.js";
+import * as topArtifactsCmd from "../commands/top_artifacts.js";
 
 export function loadCommands(client) {
   client.commands = new Collection();
 
   const commands = [
-    embedCmd,
-    timestampCmd,
-    stickyCmd,
-    purgeCmd,
-    welcomeCmd,
-    ghostpingCmd,
-    reactionroleCmd,
-    adminroleCmd,
-    pingCmd,
-    botinfoCmd,
-    serverinfoCmd,
-    countdownCmd,
-    helpCmd,
-    afkCmd,
-    ticketCmd,
-    giveawayCmd,
-    triggerCmd,
-    nilouCmd,
+    embedCmd, timestampCmd, stickyCmd, purgeCmd, welcomeCmd,
+    ghostpingCmd, reactionroleCmd, adminroleCmd, pingCmd, botinfoCmd,
+    serverinfoCmd, countdownCmd, helpCmd, afkCmd, ticketCmd,
+    giveawayCmd, triggerCmd, nilouCmd,
+    registerCmd, aboutCmd, profileCmd, listCmd, buildCmd, cvCalcCmd, topArtifactsCmd,
   ];
 
   for (const cmd of commands) {

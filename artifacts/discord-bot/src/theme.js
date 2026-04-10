@@ -9,4 +9,6 @@ export const FOOTER_STICKY = { text: "🌺 Pinned by Nilou" };
 export const FOOTER_PURGE  = { text: "✨ Nilou swept the stage clean" };
 export const FOOTER_GHOST  = { text: "👁️ Nilou sees through the mist" };
 
+export const FOOTER_GENSHIN = { text: "🌸 Nilou Bot · Data by Enka.Network · Assets © HoYoverse" };
+
 export const DIVIDER = "─────────────────────────";
