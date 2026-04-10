@@ -27,10 +27,16 @@ export const data = new SlashCommandBuilder()
   .setName("nilou")
   .setDescription("Get a random Nilou image from the Zubayr Theater");
 
+/**
+ * Executes the /nilou command
+ * @param {import('discord.js').ChatInputCommandInteraction} interaction 
+ */
 export async function execute(interaction) {
+  // Randomly select an image and a caption
   const image = NILOU_LINKS[Math.floor(Math.random() * NILOU_LINKS.length)];
   const caption = CAPTIONS[Math.floor(Math.random() * CAPTIONS.length)];
 
+  // Construct the rich embed
   const embed = new EmbedBuilder()
     .setColor(NILOU_RED)
     .setTitle("✦ Nilou — Dancer of the Zubayr Theater")
@@ -40,9 +46,14 @@ export async function execute(interaction) {
     .setTimestamp();
 
   try {
+    // Reply to the user with the final embed
     await interaction.reply({ embeds: [embed] });
   } catch (error) {
     console.error("Error displaying Nilou image:", error);
-    await interaction.reply({ content: "The stage is being prepared, please try again!", ephemeral: true });
+    // User-friendly error message if something goes wrong
+    await interaction.reply({ 
+      content: "The stage is being prepared, please try again in a moment!", 
+      ephemeral: true 
+    });
   }
 }
