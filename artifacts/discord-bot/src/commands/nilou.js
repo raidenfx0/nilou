@@ -1,5 +1,5 @@
-import { SlashCommandBuilder, EmbedBuilder } from "discord.js";
-import { NILOU_RED, FOOTER_MAIN, DIVIDER } from "../theme.js";
+import { SlashCommandBuilder } from "discord.js";
+import { DIVIDER } from "../theme.js";
 
 /**
  * Nilou Image Database
@@ -35,17 +35,15 @@ export async function execute(interaction) {
   const image = NILOU_LINKS[Math.floor(Math.random() * NILOU_LINKS.length)];
   const caption = CAPTIONS[Math.floor(Math.random() * CAPTIONS.length)];
 
-  const embed = new EmbedBuilder()
-    .setColor(NILOU_RED)
-    .setTitle("✦ Nilou — Dancer of the Zubayr Theater")
-    .setDescription(`${DIVIDER}\n${caption}\n${DIVIDER}`)
-    .setImage(image)
-    .setFooter(FOOTER_MAIN)
-    .setTimestamp();
-
   try {
-    // Reply with the embed directly to the interaction
-    await interaction.reply({ embeds: [embed] });
+    // 1. Acknowledge the command immediately
+    await interaction.reply({ content: "🌸 Drawing the curtains...", ephemeral: true });
+
+    // 2. Send the image and caption as a plain message
+    // This allows Discord to use its native image previewer
+    await interaction.channel.send({ 
+      content: `**✦ Nilou — Dancer of the Zubayr Theater**\n${DIVIDER}\n${caption}\n${image}` 
+    });
 
   } catch (error) {
     console.error("Error displaying Nilou image:", error);
