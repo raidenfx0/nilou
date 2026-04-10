@@ -3,7 +3,7 @@ import { NILOU_RED, FOOTER_MAIN, DIVIDER } from "../theme.js";
 
 /**
  * Nilou Image Database
- * Using direct i.pinimg.com links optimized for Discord embedding.
+ * Using verified direct i.pinimg.com links.
  */
 const NILOU_LINKS = [
   "https://i.pinimg.com/736x/5a/14/1f/5a141f04de343cacd31050521fb61e24.jpg",
@@ -32,35 +32,29 @@ export const data = new SlashCommandBuilder()
  * @param {import('discord.js').ChatInputCommandInteraction} interaction 
  */
 export async function execute(interaction) {
-  // Randomly select an image and a caption
   const image = NILOU_LINKS[Math.floor(Math.random() * NILOU_LINKS.length)];
   const caption = CAPTIONS[Math.floor(Math.random() * CAPTIONS.length)];
 
-  // Construct the rich embed matching your working embed style
   const embed = new EmbedBuilder()
     .setColor(NILOU_RED)
     .setTitle("✦ Nilou — Dancer of the Zubayr Theater")
     .setDescription(`${DIVIDER}\n${caption}\n${DIVIDER}`)
     .setImage(image)
-    .setFooter(FOOTER_MAIN) // Matching your working embed's footer style
+    .setFooter(FOOTER_MAIN)
     .setTimestamp();
 
   try {
-    // We use interaction.reply because this is a Slash Command
+    // Reply with the embed directly to the interaction
     await interaction.reply({ embeds: [embed] });
+
   } catch (error) {
     console.error("Error displaying Nilou image:", error);
 
-    // Check if we already replied to avoid double-reply errors
-    const errorResponse = { 
-      content: "💧 The stage is being prepared, please try again!", 
-      ephemeral: true 
-    };
-
+    const errorMsg = { content: "💧 The stage is being prepared, please try again!", ephemeral: true };
     if (interaction.replied || interaction.deferred) {
-      await interaction.followUp(errorResponse);
+      await interaction.followUp(errorMsg);
     } else {
-      await interaction.reply(errorResponse);
+      await interaction.reply(errorMsg);
     }
   }
 }
