@@ -18,26 +18,6 @@ const creationLock = new Set();
 export const data = new SlashCommandBuilder()
   .setName("ticket")
   .setDescription("Comprehensive ticket system")
-  .addSubcommandGroup((group) =>
-    group
-      .setName("setup")
-      .setDescription("Configure or reset ticket system settings (admin only)")
-      .addSubcommand((sub) =>
-        sub
-          .setName("config")
-          .setDescription("Set category and role IDs")
-          .addStringOption((o) => o.setName("support_category").setDescription("Numeric ID ONLY for Support Category").setRequired(false))
-          .addStringOption((o) => o.setName("appeal_category").setDescription("Numeric ID ONLY for Appeal Category").setRequired(false))
-          .addStringOption((o) => o.setName("partnership_category").setDescription("Numeric ID ONLY for Partnership Category").setRequired(false))
-          .addStringOption((o) => o.setName("staff_role").setDescription("Numeric ID ONLY for Staff Role").setRequired(false))
-          .addStringOption((o) => o.setName("log_channel").setDescription("Numeric ID ONLY for Log Channel").setRequired(false))
-      )
-      .addSubcommand((sub) =>
-        sub
-          .setName("reset")
-          .setDescription("Reset all ticket configurations to default")
-      )
-  )
   .addSubcommand((sub) =>
     sub
       .setName("panel")
@@ -45,6 +25,16 @@ export const data = new SlashCommandBuilder()
       .addChannelOption((o) =>
         o.setName("channel").setDescription("Channel to send the panel to").setRequired(true)
       )
+  )
+  .addSubcommand((sub) =>
+    sub
+      .setName("setup")
+      .setDescription("Configure ticket system settings (admin only)")
+      .addStringOption((o) => o.setName("support_category").setDescription("Numeric ID ONLY for Support Category").setRequired(false))
+      .addStringOption((o) => o.setName("appeal_category").setDescription("Numeric ID ONLY for Appeal Category").setRequired(false))
+      .addStringOption((o) => o.setName("partnership_category").setDescription("Numeric ID ONLY for Partnership Category").setRequired(false))
+      .addStringOption((o) => o.setName("staff_role").setDescription("Numeric ID ONLY for Staff Role").setRequired(false))
+      .addStringOption((o) => o.setName("log_channel").setDescription("Numeric ID ONLY for Log Channel").setRequired(false))
   )
   .addSubcommand((sub) =>
     sub
@@ -78,66 +68,56 @@ export const data = new SlashCommandBuilder()
 
 // --- SLASH COMMAND EXECUTION ---
 export async function execute(interaction) {
-  const group = interaction.options.getSubcommandGroup();
   const sub = interaction.options.getSubcommand();
 
-  // --- SETUP GROUP ---
-  if (group === "setup") {
+  if (sub === "setup") {
     if (!isAdmin(interaction.member)) return denyAdmin(interaction);
 
-    if (sub === "reset") {
-      ticketConfig.delete(interaction.guildId);
+    const validateId = (str) => {
+      if (!str) return null;
+      // Extract only digits (removes tags like <@&...>)
+      const cleaned = str.replace(/\D/g, "").trim();
+      return cleaned.length >= 17 ? cleaned : "INVALID";
+    };
+
+    const inputs = {
+      supportCategoryId: validateId(interaction.options.getString("support_category")),
+      appealCategoryId: validateId(interaction.options.getString("appeal_category")),
+      partnershipCategoryId: validateId(interaction.options.getString("partnership_category")),
+      staffRoleId: validateId(interaction.options.getString("staff_role")),
+      logChannelId: validateId(interaction.options.getString("log_channel")),
+    };
+
+    // If any input was provided but failed validation
+    if (Object.values(inputs).some(v => v === "INVALID")) {
       return interaction.reply({ 
-        content: "🌸 **Ticket System Reset!** All category and role IDs have been cleared for this server.", 
+        content: "❌ **Setup Failed!** Please use **Numeric IDs** only. Copy the IDs from Developer Mode.", 
         ephemeral: true 
       });
     }
 
-    if (sub === "config") {
-      const validateId = (str) => {
-        if (!str) return null;
-        const cleaned = str.replace(/\D/g, "").trim();
-        return cleaned.length >= 17 ? cleaned : "INVALID";
-      };
+    const existing = ticketConfig.get(interaction.guildId) || {};
+    // Only update the ones that were actually provided in the command
+    Object.keys(inputs).forEach(k => { 
+      if (inputs[k] !== null) existing[k] = inputs[k]; 
+    });
 
-      const inputs = {
-        supportCategoryId: validateId(interaction.options.getString("support_category")),
-        appealCategoryId: validateId(interaction.options.getString("appeal_category")),
-        partnershipCategoryId: validateId(interaction.options.getString("partnership_category")),
-        staffRoleId: validateId(interaction.options.getString("staff_role")),
-        logChannelId: validateId(interaction.options.getString("log_channel")),
-      };
+    ticketConfig.set(interaction.guildId, existing);
 
-      if (Object.values(inputs).some(v => v === "INVALID")) {
-        return interaction.reply({ 
-          content: "❌ **Setup Failed!** Please use **Numeric IDs** only. Copy the IDs from Developer Mode.", 
-          ephemeral: true 
-        });
-      }
+    const setupEmbed = new EmbedBuilder()
+      .setColor(NILOU_RED)
+      .setTitle("✦ Ticket System Setup")
+      .setDescription(`${DIVIDER}\n🌸 **Current Configuration (Raw IDs)**\n\n` +
+        `🎫 **Support:** \`${existing.supportCategoryId || 'None'}\`\n` +
+        `⚖️ **Appeal:** \`${existing.appealCategoryId || 'None'}\`\n` +
+        `🤝 **Partnership:** \`${existing.partnershipCategoryId || 'None'}\`\n` +
+        `👤 **Staff Role:** \`${existing.staffRoleId || 'None'}\`\n` +
+        `📜 **Logs:** \`${existing.logChannelId || 'None'}\`\n${DIVIDER}`)
+      .setFooter(FOOTER_MAIN);
 
-      const existing = ticketConfig.get(interaction.guildId) || {};
-      Object.keys(inputs).forEach(k => { 
-        if (inputs[k] !== null) existing[k] = inputs[k]; 
-      });
-
-      ticketConfig.set(interaction.guildId, existing);
-
-      const setupEmbed = new EmbedBuilder()
-        .setColor(NILOU_RED)
-        .setTitle("✦ Ticket System Setup")
-        .setDescription(`${DIVIDER}\n🌸 **Current Configuration (Raw IDs)**\n\n` +
-          `🎫 **Support:** \`${existing.supportCategoryId || 'None'}\`\n` +
-          `⚖️ **Appeal:** \`${existing.appealCategoryId || 'None'}\`\n` +
-          `🤝 **Partnership:** \`${existing.partnershipCategoryId || 'None'}\`\n` +
-          `👤 **Staff Role:** \`${existing.staffRoleId || 'None'}\`\n` +
-          `📜 **Logs:** \`${existing.logChannelId || 'None'}\`\n${DIVIDER}`)
-        .setFooter(FOOTER_MAIN);
-
-      return interaction.reply({ embeds: [setupEmbed], ephemeral: true });
-    }
+    return interaction.reply({ embeds: [setupEmbed], ephemeral: true });
   }
 
-  // --- OTHER COMMANDS ---
   if (sub === "panel") {
     if (!isAdmin(interaction.member)) return denyAdmin(interaction);
     const target = interaction.options.getChannel("channel");
@@ -201,6 +181,7 @@ export async function openTicket({ guild, user, type, reason }) {
   const userId = user.id;
   const lockKey = `${guild.id}:${userId}`;
 
+  // Double-check the lock to prevent duplicate clicks from creating two channels
   if (creationLock.has(lockKey)) {
     return { error: "Ticket creation is already in progress. Please wait a moment." };
   }
@@ -209,25 +190,31 @@ export async function openTicket({ guild, user, type, reason }) {
 
   try {
     const config = ticketConfig.get(guild.id) || {};
+
+    // Check if user already has an open ticket of this type
     const existing = [...tickets.values()].find(t => t.userId === userId && t.guildId === guild.id && t.open && t.type === type);
     if (existing) {
       return { error: `You already have an open **${type}** ticket!` };
     }
 
+    // Determine the correct category ID
     let categoryId = null;
     if (type === "Support") categoryId = config.supportCategoryId;
     if (type === "Appeal") categoryId = config.appealCategoryId;
     if (type === "Partnership") categoryId = config.partnershipCategoryId;
 
+    // Block creation if category isn't set
     if (!categoryId) {
       return { error: `The category for **${type}** tickets has not been set up yet.` };
     }
 
+    // Explicitly fetch category to ensure it exists and we can see it
     const category = await guild.channels.fetch(categoryId).catch(() => null);
     if (!category || category.type !== ChannelType.GuildCategory) {
-      return { error: `The category ID provided for **${type}** is invalid. Please update it in \`/ticket setup config\`.` };
+      return { error: `The category ID provided for **${type}** is invalid. Please update it in \`/ticket setup\`.` };
     }
 
+    // Create the ticket channel strictly inside the parent category
     const channel = await guild.channels.create({
       name: `${type.toLowerCase()}-${user.username.slice(0, 15)}`,
       type: ChannelType.GuildText,
@@ -241,6 +228,7 @@ export async function openTicket({ guild, user, type, reason }) {
       topic: `${type} Ticket | User: ${user.tag}`
     });
 
+    // Save to memory
     tickets.set(`${guild.id}:${channel.id}`, { guildId: guild.id, userId, channelId: channel.id, type, open: true });
 
     const embed = new EmbedBuilder()
@@ -261,6 +249,7 @@ export async function openTicket({ guild, user, type, reason }) {
     console.error("Ticket Creation Error:", err);
     return { error: "Failed to create the ticket channel. Please check my permissions." };
   } finally {
+    // Hold the lock for 10 seconds to ensure the process is fully finished
     setTimeout(() => creationLock.delete(lockKey), 10000);
   }
 }
