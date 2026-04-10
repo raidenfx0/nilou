@@ -1,9 +1,9 @@
-import express from 'express';
+import express from "express";
 const app = express();
 
 // This tells Render "I am alive!"
-app.get('/', (req, res) => {
-  res.send('Bot is running!');
+app.get("/", (req, res) => {
+  res.send("Bot is running!");
 });
 
 const PORT = process.env.PORT || 3000;
@@ -23,9 +23,17 @@ import { createServer } from "http";
 import { loadCommands } from "./handlers/commands.js";
 import { loadEvents } from "./handlers/events.js";
 import {
-  tickets, ticketConfig, afkUsers, stickyMessages,
-  welcomeChannels, adminRoles, botStats, giveaways,
-  triggers, countdowns, pinnedCountdowns,
+  tickets,
+  ticketConfig,
+  afkUsers,
+  stickyMessages,
+  welcomeChannels,
+  adminRoles,
+  botStats,
+  giveaways,
+  triggers,
+  countdowns,
+  pinnedCountdowns,
 } from "./data/store.js";
 import { NILOU_RED, FOOTER_MAIN, DIVIDER } from "./theme.js";
 import { isAdmin } from "./utils/adminCheck.js";
@@ -56,7 +64,9 @@ const rest = new REST().setToken(TOKEN);
 
 async function registerCommandsToGuild(guildId, appId, commandsJson) {
   try {
-    await rest.put(Routes.applicationGuildCommands(appId, guildId), { body: commandsJson });
+    await rest.put(Routes.applicationGuildCommands(appId, guildId), {
+      body: commandsJson,
+    });
     console.log(`✅ Commands registered to guild ${guildId}`);
   } catch (err) {
     console.error(`❌ Failed to register to guild ${guildId}:`, err.message);
@@ -66,7 +76,9 @@ async function registerCommandsToGuild(guildId, appId, commandsJson) {
 client.once(Events.ClientReady, async (readyClient) => {
   console.log(`✅ Logged in as ${readyClient.user.tag}`);
 
-  const commandsJson = [...client.commands.values()].map((cmd) => cmd.data.toJSON());
+  const commandsJson = [...client.commands.values()].map((cmd) =>
+    cmd.data.toJSON(),
+  );
   const appId = readyClient.user.id;
 
   try {
@@ -77,7 +89,9 @@ client.once(Events.ClientReady, async (readyClient) => {
   }
 
   const guilds = readyClient.guilds.cache;
-  console.log(`🔄 Registering ${commandsJson.length} commands to ${guilds.size} server(s)...`);
+  console.log(
+    `🔄 Registering ${commandsJson.length} commands to ${guilds.size} server(s)...`,
+  );
   for (const [guildId] of guilds) {
     await registerCommandsToGuild(guildId, appId, commandsJson);
   }
@@ -85,7 +99,9 @@ client.once(Events.ClientReady, async (readyClient) => {
 });
 
 client.on(Events.GuildCreate, async (guild) => {
-  const commandsJson = [...client.commands.values()].map((cmd) => cmd.data.toJSON());
+  const commandsJson = [...client.commands.values()].map((cmd) =>
+    cmd.data.toJSON(),
+  );
   console.log(`🌸 Joined new server: ${guild.name}`);
   await registerCommandsToGuild(guild.id, client.user.id, commandsJson);
 });
@@ -94,7 +110,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
   if (interaction.isAutocomplete()) {
     const command = client.commands.get(interaction.commandName);
     if (command?.autocomplete) {
-      try { await command.autocomplete(interaction); } catch { await interaction.respond([]).catch(() => {}); }
+      try {
+        await command.autocomplete(interaction);
+      } catch {
+        await interaction.respond([]).catch(() => {});
+      }
     }
     return;
   }
@@ -106,7 +126,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
       await command.execute(interaction);
     } catch (err) {
       console.error(`Error in /${interaction.commandName}:`, err);
-      const reply = { content: "❌ Something went wrong with this command.", ephemeral: true };
+      const reply = {
+        content: "❌ Something went wrong with this command.",
+        ephemeral: true,
+      };
       if (interaction.replied || interaction.deferred) {
         await interaction.followUp(reply).catch(() => {});
       } else {
@@ -119,15 +142,23 @@ client.on(Events.InteractionCreate, async (interaction) => {
   if (interaction.isButton()) {
     const id = interaction.customId;
 
-    if (id === "btn_support" || id === "btn_appeal" || id === "btn_partnership") {
-      const TYPE_MAP = { btn_support: "Support", btn_appeal: "Appeal", btn_partnership: "Partnership" };
-      const type     = TYPE_MAP[id];
+    if (
+      id === "btn_support" ||
+      id === "btn_appeal" ||
+      id === "btn_partnership"
+    ) {
+      const TYPE_MAP = {
+        btn_support: "Support",
+        btn_appeal: "Appeal",
+        btn_partnership: "Partnership",
+      };
+      const type = TYPE_MAP[id];
 
       await interaction.deferReply({ ephemeral: true });
 
       const result = await openTicket({
-        guild:  interaction.guild,
-        user:   interaction.user,
+        guild: interaction.guild,
+        user: interaction.user,
         type,
         reason: "Opened via panel",
       });
@@ -135,26 +166,43 @@ client.on(Events.InteractionCreate, async (interaction) => {
       if (result.error) {
         await interaction.editReply({ content: `❌ ${result.error}` });
       } else {
-        await interaction.editReply({ content: `🌸 Your **${type}** ticket has been opened in ${result.channel}!` });
+        await interaction.editReply({
+          content: `🌸 Your **${type}** ticket has been opened in ${result.channel}!`,
+        });
       }
       return;
     }
 
     if (id === "close_ticket" || id.startsWith("ticket_close:")) {
       const ticketId = `${interaction.guildId}:${interaction.channelId}`;
-      const ticket   = tickets.get(ticketId);
+      const ticket = tickets.get(ticketId);
 
       if (!ticket || !ticket.open) {
-        await interaction.reply({ content: "❌ This ticket is already closed.", ephemeral: true });
+        await interaction.reply({
+          content: "❌ This ticket is already closed.",
+          ephemeral: true,
+        });
         return;
       }
-      if (ticket.userId !== interaction.user.id && !isAdmin(interaction.member)) {
-        await interaction.reply({ content: "❌ Only the ticket owner or an admin can close this.", ephemeral: true });
+      if (
+        ticket.userId !== interaction.user.id &&
+        !isAdmin(interaction.member)
+      ) {
+        await interaction.reply({
+          content: "❌ Only the ticket owner or an admin can close this.",
+          ephemeral: true,
+        });
         return;
       }
 
       await interaction.reply({ embeds: [closeEmbed(interaction.user)] });
-      await closeTicket(interaction.channel, ticket, ticketId, interaction.user, interaction.guild);
+      await closeTicket(
+        interaction.channel,
+        ticket,
+        ticketId,
+        interaction.user,
+        interaction.guild,
+      );
       return;
     }
   }
@@ -169,8 +217,11 @@ function readBody(req) {
     let data = "";
     req.on("data", (chunk) => (data += chunk));
     req.on("end", () => {
-      try { resolve(JSON.parse(data || "{}")); }
-      catch { resolve({}); }
+      try {
+        resolve(JSON.parse(data || "{}"));
+      } catch {
+        resolve({});
+      }
     });
     req.on("error", reject);
   });
@@ -196,19 +247,24 @@ const server = createServer(async (req, res) => {
       const h = Math.floor(uptime / 3600000);
       const m = Math.floor((uptime % 3600000) / 60000);
       const s = Math.floor((uptime % 60000) / 1000);
-      res.end(JSON.stringify({
-        tag: client.user?.tag || "Nilou",
-        status: client.isReady() ? "online" : "offline",
-        uptime: `${h}h ${m}m ${s}s`,
-        uptimeMs: uptime,
-        guildCount: client.guilds.cache.size,
-        ping: client.ws.ping,
-      }));
+      res.end(
+        JSON.stringify({
+          tag: client.user?.tag || "Nilou",
+          status: client.isReady() ? "online" : "offline",
+          uptime: `${h}h ${m}m ${s}s`,
+          uptimeMs: uptime,
+          guildCount: client.guilds.cache.size,
+          ping: client.ws.ping,
+        }),
+      );
       return;
     }
 
     if (url === "/api/afk") {
-      const list = [...afkUsers.entries()].map(([key, data]) => ({ key, ...data }));
+      const list = [...afkUsers.entries()].map(([key, data]) => ({
+        key,
+        ...data,
+      }));
       res.end(JSON.stringify(list));
       return;
     }
@@ -230,17 +286,21 @@ const server = createServer(async (req, res) => {
     }
 
     if (url === "/api/giveaways") {
-      res.end(JSON.stringify([...giveaways.values()].map((g) => ({
-        messageId: g.messageId,
-        prize: g.prize,
-        winnerCount: g.winnerCount,
-        endTime: g.endTime,
-        hostId: g.hostId,
-        guildId: g.guildId,
-        channelId: g.channelId,
-        ended: g.ended,
-        winners: g.winners || [],
-      }))));
+      res.end(
+        JSON.stringify(
+          [...giveaways.values()].map((g) => ({
+            messageId: g.messageId,
+            prize: g.prize,
+            winnerCount: g.winnerCount,
+            endTime: g.endTime,
+            hostId: g.hostId,
+            guildId: g.guildId,
+            channelId: g.channelId,
+            ended: g.ended,
+            winners: g.winners || [],
+          })),
+        ),
+      );
       return;
     }
 
@@ -270,9 +330,14 @@ const server = createServer(async (req, res) => {
           adminRole: adminRoles.get(guildId) || null,
           welcomeChannel: welcomeChannels.get(guildId) || null,
           ticketConfig: ticketConfig.get(guildId) || null,
-          stickyCount: [...stickyMessages.keys()].filter((k) => k.startsWith(guildId)).length,
-          afkCount: [...afkUsers.keys()].filter((k) => k.startsWith(guildId)).length,
-          openTickets: [...tickets.values()].filter((t) => t.guildId === guildId && t.open).length,
+          stickyCount: [...stickyMessages.keys()].filter((k) =>
+            k.startsWith(guildId),
+          ).length,
+          afkCount: [...afkUsers.keys()].filter((k) => k.startsWith(guildId))
+            .length,
+          openTickets: [...tickets.values()].filter(
+            (t) => t.guildId === guildId && t.open,
+          ).length,
         };
       }
       res.end(JSON.stringify(settings));
@@ -284,10 +349,23 @@ const server = createServer(async (req, res) => {
     const body = await readBody(req);
 
     if (url === "/api/send-embed") {
-      const { guildId, channelId, title, description, color, footer, image, thumbnail } = body;
+      const {
+        guildId,
+        channelId,
+        title,
+        description,
+        color,
+        footer,
+        image,
+        thumbnail,
+      } = body;
       if (!channelId || !title || !description) {
         res.statusCode = 400;
-        res.end(JSON.stringify({ error: "channelId, title, and description are required" }));
+        res.end(
+          JSON.stringify({
+            error: "channelId, title, and description are required",
+          }),
+        );
         return;
       }
 
@@ -300,7 +378,9 @@ const server = createServer(async (req, res) => {
           channel = await client.channels.fetch(channelId);
         }
 
-        const hexColor = color ? parseInt(color.replace("#", ""), 16) : NILOU_RED;
+        const hexColor = color
+          ? parseInt(color.replace("#", ""), 16)
+          : NILOU_RED;
         const embed = new EmbedBuilder()
           .setColor(isNaN(hexColor) ? NILOU_RED : hexColor)
           .setTitle(`✦ ${title}`)
@@ -336,9 +416,9 @@ const server = createServer(async (req, res) => {
       }
 
       try {
-        const guild   = await client.guilds.fetch(guildId);
+        const guild = await client.guilds.fetch(guildId);
         const channel = await guild.channels.fetch(channelId);
-        const msg     = await channel.send({ embeds: [buildCountdownEmbed(cd)] });
+        const msg = await channel.send({ embeds: [buildCountdownEmbed(cd)] });
         pinnedCountdowns.set(guildId, { channelId, messageId: msg.id });
 
         const { startPinInterval } = await import("./commands/countdown.js");
@@ -356,14 +436,20 @@ const server = createServer(async (req, res) => {
       const { guildId, phrase, response, exact } = body;
       if (!guildId || !phrase || !response) {
         res.statusCode = 400;
-        res.end(JSON.stringify({ error: "guildId, phrase, and response required" }));
+        res.end(
+          JSON.stringify({ error: "guildId, phrase, and response required" }),
+        );
         return;
       }
       if (!triggers.has(guildId)) triggers.set(guildId, []);
       const list = triggers.get(guildId);
-      const idx  = list.findIndex((t) => t.phrase === phrase.toLowerCase());
+      const idx = list.findIndex((t) => t.phrase === phrase.toLowerCase());
       if (idx !== -1) list.splice(idx, 1);
-      list.push({ phrase: phrase.toLowerCase(), response: response.replace(/\\n/g, "\n"), exact: !!exact });
+      list.push({
+        phrase: phrase.toLowerCase(),
+        response: response.replace(/\\n/g, "\n"),
+        exact: !!exact,
+      });
       triggers.set(guildId, list);
       res.end(JSON.stringify({ success: true }));
       return;
@@ -377,7 +463,10 @@ const server = createServer(async (req, res) => {
         return;
       }
       const list = triggers.get(guildId) || [];
-      triggers.set(guildId, list.filter((t) => t.phrase !== phrase.toLowerCase()));
+      triggers.set(
+        guildId,
+        list.filter((t) => t.phrase !== phrase.toLowerCase()),
+      );
       res.end(JSON.stringify({ success: true }));
       return;
     }

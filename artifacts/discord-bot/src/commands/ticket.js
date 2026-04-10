@@ -11,6 +11,7 @@ import { NILOU_RED, FOOTER_MAIN, DIVIDER } from "../theme.js";
 import { tickets, ticketConfig } from "../data/store.js";
 import { isAdmin, denyAdmin } from "../utils/adminCheck.js";
 
+// --- SLASH COMMAND DEFINITION ---
 export const data = new SlashCommandBuilder()
   .setName("ticket")
   .setDescription("Ticket system")
@@ -75,26 +76,27 @@ export const data = new SlashCommandBuilder()
       .addUserOption((o) => o.setName("user").setDescription("User to remove").setRequired(true))
   );
 
+// --- SLASH COMMAND EXECUTION ---
 export async function execute(interaction) {
   const sub = interaction.options.getSubcommand();
 
   if (sub === "setup") {
     if (!isAdmin(interaction.member)) return denyAdmin(interaction);
 
-    const supportCat     = interaction.options.getString("support_category");
-    const appealCat      = interaction.options.getString("appeal_category");
+    const supportCat = interaction.options.getString("support_category");
+    const appealCat = interaction.options.getString("appeal_category");
     const partnershipCat = interaction.options.getString("partnership_category");
-    const staffRole      = interaction.options.getString("staff_role");
-    const logChannel     = interaction.options.getString("log_channel");
+    const staffRole = interaction.options.getString("staff_role");
+    const logChannel = interaction.options.getString("log_channel");
 
     const existing = ticketConfig.get(interaction.guildId) || {};
-    const updated  = {
+    const updated = {
       ...existing,
-      ...(supportCat     && { supportCategoryId:     supportCat     }),
-      ...(appealCat      && { appealCategoryId:      appealCat      }),
+      ...(supportCat && { supportCategoryId: supportCat }),
+      ...(appealCat && { appealCategoryId: appealCat }),
       ...(partnershipCat && { partnershipCategoryId: partnershipCat }),
-      ...(staffRole      && { staffRoleId:           staffRole      }),
-      ...(logChannel     && { logChannelId:          logChannel     }),
+      ...(staffRole && { staffRoleId: staffRole }),
+      ...(logChannel && { logChannelId: logChannel }),
     };
     ticketConfig.set(interaction.guildId, updated);
 
@@ -103,13 +105,13 @@ export async function execute(interaction) {
       .setTitle("✦ Ticket System Configured")
       .setDescription(
         `${DIVIDER}\n` +
-        `🌸 Ticket config updated!\n\n` +
-        `Support Category: ${updated.supportCategoryId     ? `\`${updated.supportCategoryId}\``     : "Not set"}\n` +
-        `Appeal Category: ${updated.appealCategoryId      ? `\`${updated.appealCategoryId}\``      : "Not set"}\n` +
-        `Partnership Category: ${updated.partnershipCategoryId ? `\`${updated.partnershipCategoryId}\`` : "Not set"}\n` +
-        `Staff Role: ${updated.staffRoleId   ? `<@&${updated.staffRoleId}>`   : "Not set"}\n` +
-        `Log Channel: ${updated.logChannelId ? `<#${updated.logChannelId}>`   : "Not set"}\n` +
-        `${DIVIDER}`
+          `🌸 Ticket config updated!\n\n` +
+          `Support Category: ${updated.supportCategoryId ? `\`${updated.supportCategoryId}\`` : "Not set"}\n` +
+          `Appeal Category: ${updated.appealCategoryId ? `\`${updated.appealCategoryId}\`` : "Not set"}\n` +
+          `Partnership Category: ${updated.partnershipCategoryId ? `\`${updated.partnershipCategoryId}\`` : "Not set"}\n` +
+          `Staff Role: ${updated.staffRoleId ? `<@&${updated.staffRoleId}>` : "Not set"}\n` +
+          `Log Channel: ${updated.logChannelId ? `<#${updated.logChannelId}>` : "Not set"}\n` +
+          `${DIVIDER}`
       )
       .setFooter(FOOTER_MAIN)
       .setTimestamp();
@@ -128,12 +130,12 @@ export async function execute(interaction) {
       .setTitle("✦ Support Tickets")
       .setDescription(
         `${DIVIDER}\n` +
-        `🌸 Need help? Open a ticket by clicking one of the buttons below.\n\n` +
-        `🎫 **Support** — General help and questions\n` +
-        `⚖️ **Appeal** — Ban or punishment appeals\n` +
-        `🤝 **Partnership** — Partnership inquiries\n\n` +
-        `A staff member will assist you shortly!\n` +
-        `${DIVIDER}`
+          `🌸 Need help? Open a ticket by clicking one of the buttons below.\n\n` +
+          `🎫 **Support** — General help and questions\n` +
+          `⚖️ **Appeal** — Ban or punishment appeals\n` +
+          `🤝 **Partnership** — Partnership inquiries\n\n` +
+          `A staff member will assist you shortly!\n` +
+          `${DIVIDER}`
       )
       .setFooter(FOOTER_MAIN)
       .setTimestamp();
@@ -162,32 +164,35 @@ export async function execute(interaction) {
   }
 
   if (sub === "open") {
-    const type   = interaction.options.getString("type") || "Support";
+    const type = interaction.options.getString("type") || "Support";
     const reason = interaction.options.getString("reason") || "No reason provided";
-    await openTicket({ guild: interaction.guild, user: interaction.user, type, reason });
-    await interaction.reply({ content: `🌸 Your **${type}** ticket has been opened!`, ephemeral: true });
+    const result = await openTicket({ guild: interaction.guild, user: interaction.user, type, reason });
+
+    if (result.error) {
+      await interaction.reply({ content: `❌ ${result.error}`, ephemeral: true });
+    } else {
+      await interaction.reply({ content: `🌸 Your **${type}** ticket has been opened in ${result.channel}!`, ephemeral: true });
+    }
     return;
   }
 
   if (sub === "close") {
     const ticketId = `${interaction.guildId}:${interaction.channelId}`;
-    const ticket   = tickets.get(ticketId);
+    const ticket = tickets.get(ticketId);
     if (!ticket || !ticket.open) {
       return interaction.reply({ content: "❌ This is not an open ticket channel.", ephemeral: true });
     }
     if (ticket.userId !== interaction.user.id && !isAdmin(interaction.member)) {
       return interaction.reply({ content: "❌ Only the ticket owner or an admin can close this.", ephemeral: true });
     }
+    await interaction.reply({ embeds: [closeEmbed(interaction.user)] });
     await closeTicket(interaction.channel, ticket, ticketId, interaction.user, interaction.guild);
-    await interaction.reply({
-      embeds: [closeEmbed(interaction.user)],
-    });
     return;
   }
 
   if (sub === "add") {
     const ticketId = `${interaction.guildId}:${interaction.channelId}`;
-    const ticket   = tickets.get(ticketId);
+    const ticket = tickets.get(ticketId);
     if (!ticket?.open) return interaction.reply({ content: "❌ Not an open ticket channel.", ephemeral: true });
     if (!isAdmin(interaction.member)) return denyAdmin(interaction);
     const user = interaction.options.getUser("user");
@@ -202,7 +207,7 @@ export async function execute(interaction) {
 
   if (sub === "remove") {
     const ticketId = `${interaction.guildId}:${interaction.channelId}`;
-    const ticket   = tickets.get(ticketId);
+    const ticket = tickets.get(ticketId);
     if (!ticket?.open) return interaction.reply({ content: "❌ Not an open ticket channel.", ephemeral: true });
     if (!isAdmin(interaction.member)) return denyAdmin(interaction);
     const user = interaction.options.getUser("user");
@@ -215,149 +220,158 @@ export async function execute(interaction) {
   }
 }
 
+// --- CORE TICKET LOGIC ---
+
 export function closeEmbed(user) {
   return new EmbedBuilder()
     .setColor(NILOU_RED)
-    .setTitle("✦ Ticket Closed")
-    .setDescription(`${DIVIDER}\n🌸 Closed by ${user}.\nThis channel will be deleted in 5 seconds.\n${DIVIDER}`)
+    .setTitle("✦ Ticket Closing")
+    .setDescription(`${DIVIDER}\n🌸 This ticket is being closed by ${user}.\nDeleting channel in 5 seconds...\n${DIVIDER}`)
     .setFooter(FOOTER_MAIN)
     .setTimestamp();
-}
-
-export async function closeTicket(channel, ticket, ticketId, user, guild) {
-  ticket.open = false;
-  tickets.set(ticketId, ticket);
-
-  const config = ticketConfig.get(guild.id);
-  if (config?.logChannelId) {
-    const logCh = guild.channels.cache.get(config.logChannelId);
-    if (logCh) {
-      logCh.send({
-        embeds: [
-          new EmbedBuilder()
-            .setColor(NILOU_RED)
-            .setTitle("✦ Ticket Closed")
-            .setDescription(`Closed by: ${user.tag}\nTicket: <#${channel.id}>`)
-            .setFooter(FOOTER_MAIN)
-            .setTimestamp(),
-        ],
-      }).catch(() => {});
-    }
-  }
-
-  setTimeout(() => {
-    channel.delete().catch(() => {});
-    tickets.delete(ticketId);
-  }, 5000);
 }
 
 export async function openTicket({ guild, user, type, reason = "No reason provided" }) {
-  const config = ticketConfig.get(guild.id) || {};
-
-  const guildTickets = [...tickets.values()].filter(
-    (t) => t.guildId === guild.id && t.userId === user.id && t.open
-  );
-  if (guildTickets.length >= 3) return { error: "You already have 3 open tickets. Please close one first!" };
-
-  const categoryId = {
-    Support:     config.supportCategoryId,
-    Appeal:      config.appealCategoryId,
-    Partnership: config.partnershipCategoryId,
-  }[type] || null;
-
-  const channelName = `ticket-${user.username.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 20)}`;
-
-  const permissionOverwrites = [
-    { id: guild.id,          deny:  [PermissionFlagsBits.ViewChannel] },
-    {
-      id: user.id,
-      allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory],
-    },
-    {
-      id: guild.client.user.id,
-      allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageChannels],
-    },
-  ];
-
-  if (config.staffRoleId) {
-    permissionOverwrites.push({
-      id: config.staffRoleId,
-      allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory],
-    });
-  }
-
-  let channel;
   try {
-    channel = await guild.channels.create({
+    const config = ticketConfig.get(guild.id) || {};
+
+    const userTickets = [...tickets.values()].filter(
+      (t) => t.userId === user.id && t.open && t.guildId === guild.id
+    );
+
+    if (userTickets.length >= 3) {
+      return { error: "You already have 3 open tickets. Please close one first!" };
+    }
+
+    const categoryMap = {
+      Support: config.supportCategoryId,
+      Appeal: config.appealCategoryId,
+      Partnership: config.partnershipCategoryId,
+    };
+
+    let targetCategoryId = categoryMap[type] || null;
+
+    if (targetCategoryId) {
+      const categoryChannel = guild.channels.cache.get(targetCategoryId);
+      if (!categoryChannel || categoryChannel.type !== ChannelType.GuildCategory) {
+        targetCategoryId = null; 
+      }
+    }
+
+    const permissionOverwrites = [
+      { id: guild.id, deny: [PermissionFlagsBits.ViewChannel] },
+      {
+        id: user.id,
+        allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles],
+      },
+      {
+        id: guild.client.user.id,
+        allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageChannels],
+      }
+    ];
+
+    if (config.staffRoleId) {
+      permissionOverwrites.push({
+        id: config.staffRoleId,
+        allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory],
+      });
+    }
+
+    const channelName = `ticket-${user.username.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 15)}`;
+
+    const channel = await guild.channels.create({
       name: channelName,
       type: ChannelType.GuildText,
-      parent: categoryId,
+      parent: targetCategoryId,
       permissionOverwrites,
-      topic: `${type} ticket by ${user.tag} — ${reason}`,
+      topic: `${type} by ${user.tag} | Reason: ${reason}`
     });
-  } catch (err) {
-    return { error: `Could not create ticket channel: ${err.message}` };
-  }
 
-  const ticketId = `${guild.id}:${channel.id}`;
-  tickets.set(ticketId, {
-    id: ticketId,
-    channelId: channel.id,
-    guildId: guild.id,
-    userId: user.id,
-    type,
-    reason,
-    open: true,
-    openedAt: Date.now(),
-    members: [user.id],
-  });
+    const ticketId = `${guild.id}:${channel.id}`;
+    tickets.set(ticketId, {
+      id: ticketId,
+      guildId: guild.id,
+      userId: user.id,
+      channelId: channel.id,
+      type,
+      open: true,
+      members: [user.id],
+      openedAt: Date.now()
+    });
 
-  const ICONS = { Support: "🎫", Appeal: "⚖️", Partnership: "🤝" };
+    const ICONS = { Support: "🎫", Appeal: "⚖️", Partnership: "🤝" };
+    const embed = new EmbedBuilder()
+      .setColor(NILOU_RED)
+      .setTitle(`✦ ${ICONS[type] || "🎫"} ${type} Ticket`)
+      .setDescription(
+        `${DIVIDER}\n` +
+        `🌸 Hello ${user}! Your ticket has been created.\n\n` +
+        `**Reason:** ${reason}\n` +
+        `Please wait for staff assistance.\n` +
+        `${DIVIDER}`
+      )
+      .setFooter(FOOTER_MAIN)
+      .setTimestamp();
 
-  const openEmbed = new EmbedBuilder()
-    .setColor(NILOU_RED)
-    .setTitle(`✦ ${ICONS[type] || "🎫"} ${type} Ticket`)
-    .setDescription(
-      `${DIVIDER}\n` +
-      `🌸 Hello ${user}! Your ticket is open.\n\n` +
-      `Type: **${type}**\nReason: ${reason}\n\n` +
-      `A staff member will be with you shortly!\n` +
-      `${DIVIDER}`
-    )
-    .setFooter(FOOTER_MAIN)
-    .setTimestamp();
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId("close_ticket")
+        .setLabel("Close Ticket")
+        .setStyle(ButtonStyle.Danger)
+        .setEmoji("🔒")
+    );
 
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId("close_ticket")
-      .setLabel("Close Ticket")
-      .setStyle(ButtonStyle.Danger)
-      .setEmoji("🔒")
-  );
+    const mention = config.staffRoleId ? `${user} | <@&${config.staffRoleId}>` : `${user}`;
+    await channel.send({ content: mention, embeds: [embed], components: [row] });
 
-  const ping = config.staffRoleId
-    ? `${user} | <@&${config.staffRoleId}>`
-    : `${user}`;
-
-  await channel.send({ content: ping, embeds: [openEmbed], components: [row] });
-
-  if (config.logChannelId) {
-    const logCh = guild.channels.cache.get(config.logChannelId);
-    if (logCh) {
-      logCh.send({
-        embeds: [
-          new EmbedBuilder()
-            .setColor(NILOU_RED)
-            .setTitle("✦ Ticket Opened")
-            .setDescription(
-              `User: ${user.tag}\nType: ${type}\nChannel: ${channel}\nReason: ${reason}`
-            )
-            .setFooter(FOOTER_MAIN)
-            .setTimestamp(),
-        ],
-      }).catch(() => {});
+    if (config.logChannelId) {
+      const logCh = guild.channels.cache.get(config.logChannelId);
+      if (logCh) {
+        const logEmbed = new EmbedBuilder()
+          .setColor(NILOU_RED)
+          .setTitle("✦ Ticket Opened")
+          .setDescription(`**User:** ${user.tag}\n**Type:** ${type}\n**Channel:** ${channel}\n**Reason:** ${reason}`)
+          .setFooter(FOOTER_MAIN)
+          .setTimestamp();
+        logCh.send({ embeds: [logEmbed] }).catch(() => {});
+      }
     }
-  }
 
-  return { channel };
+    return { channel };
+  } catch (err) {
+    console.error("Ticket Creation Error:", err);
+    return { error: `System error: ${err.message}` };
+  }
+}
+
+export async function closeTicket(channel, ticket, ticketId, user, guild) {
+  try {
+    const config = ticketConfig.get(guild.id) || {};
+    ticket.open = false;
+    tickets.set(ticketId, ticket);
+
+    if (config.logChannelId) {
+      const logCh = guild.channels.cache.get(config.logChannelId);
+      if (logCh) {
+        const logEmbed = new EmbedBuilder()
+          .setColor(NILOU_RED)
+          .setTitle("✦ Ticket Closed")
+          .setDescription(`**Closed by:** ${user.tag}\n**Ticket Type:** ${ticket.type}\n**Original Owner:** <@${ticket.userId}>`)
+          .setFooter(FOOTER_MAIN)
+          .setTimestamp();
+        logCh.send({ embeds: [logEmbed] }).catch(() => {});
+      }
+    }
+
+    setTimeout(async () => {
+      try {
+        await channel.delete(`Ticket closed by ${user.tag}`);
+        tickets.delete(ticketId);
+      } catch (err) {
+        console.error("Failed to delete channel:", err);
+      }
+    }, 5000);
+  } catch (error) {
+    console.error("Error in closeTicket:", error);
+  }
 }
