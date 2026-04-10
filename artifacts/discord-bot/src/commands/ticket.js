@@ -41,7 +41,9 @@ export const data = new SlashCommandBuilder()
       .setName("open")
       .setDescription("Open a ticket via slash command")
       .addStringOption((o) =>
-        o.setName("type").setDescription("Ticket type").setRequired(false)
+        o.setName("type")
+          .setDescription("Select the type of ticket")
+          .setRequired(true) // Now a required question
           .addChoices(
             { name: "Support", value: "Support" },
             { name: "Appeal", value: "Appeal" },
@@ -71,16 +73,32 @@ export async function execute(interaction) {
   // 1. SETUP COMMAND
   if (sub === "setup") {
     if (!isAdmin(interaction.member)) return denyAdmin(interaction);
+
+    const staffRoleInput = interaction.options.getString("staff_role");
+
+    // Validation for Staff Role ID
+    if (staffRoleInput) {
+      const roleCheck = interaction.guild.roles.cache.get(staffRoleInput);
+      if (!roleCheck) {
+        return interaction.reply({ 
+          content: `❌ The Role ID \`${staffRoleInput}\` is invalid or not found in this server. Please check the ID and try again.`, 
+          ephemeral: true 
+        });
+      }
+    }
+
     const updates = {
       supportCategoryId: interaction.options.getString("support_category"),
       appealCategoryId: interaction.options.getString("appeal_category"),
       partnershipCategoryId: interaction.options.getString("partnership_category"),
-      staffRoleId: interaction.options.getString("staff_role"),
+      staffRoleId: staffRoleInput,
       logChannelId: interaction.options.getString("log_channel"),
     };
+
     const existing = ticketConfig.get(interaction.guildId) || {};
     Object.keys(updates).forEach(k => { if (updates[k]) existing[k] = updates[k]; });
     ticketConfig.set(interaction.guildId, existing);
+
     return interaction.reply({ content: "🌸 Ticket configuration has been updated successfully!", ephemeral: true });
   }
 
@@ -106,7 +124,7 @@ export async function execute(interaction) {
   // 3. OPEN COMMAND (Slash)
   if (sub === "open") {
     await interaction.deferReply({ ephemeral: true });
-    const type = interaction.options.getString("type") || "Support";
+    const type = interaction.options.getString("type");
     const reason = interaction.options.getString("reason") || "No reason provided";
     const result = await openTicket({ guild: interaction.guild, user: interaction.user, type, reason });
     return interaction.editReply({ content: result.error ? `❌ ${result.error}` : `🌸 Your ticket has been opened in ${result.channel}!` });
@@ -117,7 +135,6 @@ export async function execute(interaction) {
     const ticketId = `${interaction.guildId}:${interaction.channelId}`;
     const ticket = tickets.get(ticketId);
 
-    // Security & Fallback check
     if (!ticket && !interaction.channel.name.startsWith("ticket-")) {
       return interaction.reply({ content: "❌ This is not a recognized ticket channel.", ephemeral: true });
     }
@@ -172,6 +189,17 @@ export async function openTicket({ guild, user, type, reason }) {
     const active = [...tickets.values()].filter(t => t.userId === user.id && t.open && t.guildId === guild.id);
     if (active.length >= 3) return { error: "You already have 3 open tickets! Close one before opening more." };
 
+    // Category routing logic
+    const categoryId = type === "Appeal" ? config.appealCategoryId : type === "Partnership" ? config.partnershipCategoryId : config.supportCategoryId;
+
+    // Validation: Check if category exists
+    if (categoryId) {
+      const catCheck = guild.channels.cache.get(categoryId);
+      if (!catCheck || catCheck.type !== ChannelType.GuildCategory) {
+        return { error: `The category for **${type}** is not configured correctly in setup.` };
+      }
+    }
+
     // Permissions logic
     const overwrites = [
       { id: guild.id, deny: [PermissionFlagsBits.ViewChannel] },
@@ -179,16 +207,12 @@ export async function openTicket({ guild, user, type, reason }) {
       { id: guild.client.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageChannels] }
     ];
 
-    // Safely add Staff Role if it exists
     if (config.staffRoleId) {
       const role = guild.roles.cache.get(config.staffRoleId);
       if (role) {
         overwrites.push({ id: config.staffRoleId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] });
       }
     }
-
-    // Category routing
-    const categoryId = type === "Appeal" ? config.appealCategoryId : type === "Partnership" ? config.partnershipCategoryId : config.supportCategoryId;
 
     const channel = await guild.channels.create({
       name: `ticket-${user.username}`,
@@ -252,14 +276,11 @@ export async function closeTicket(channel, ticket, ticketId, user, guild) {
       }
     }
 
-    // Delay deletion so users can see the "Closing" message
     setTimeout(async () => {
       try {
         await channel.delete();
         tickets.delete(ticketId);
-      } catch (err) {
-        // Channel might already be gone
-      }
+      } catch (err) {}
     }, 5000);
   } catch (err) {
     console.error("Error closing ticket:", err);
