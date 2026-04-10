@@ -11,8 +11,8 @@ import { NILOU_RED, FOOTER_MAIN, DIVIDER } from "../theme.js";
 import { tickets, ticketConfig } from "../data/store.js";
 import { isAdmin, denyAdmin } from "../utils/adminCheck.js";
 
-// Strict lock to prevent duplicate creation across buttons and commands
-const activeCreations = new Set();
+// Map to track active creation processes to prevent duplicates (UserId -> Timestamp)
+const activeCreations = new Map();
 
 // --- SLASH COMMAND DEFINITION ---
 export const data = new SlashCommandBuilder()
@@ -33,8 +33,8 @@ export const data = new SlashCommandBuilder()
       .addStringOption((o) => o.setName("support_category").setDescription("Category ID for Support").setRequired(false))
       .addStringOption((o) => o.setName("appeal_category").setDescription("Category ID for Appeal").setRequired(false))
       .addStringOption((o) => o.setName("partnership_category").setDescription("Category ID for Partnership").setRequired(false))
-      .addStringOption((o) => o.setName("staff_role").setDescription("Staff Role (ID or Tag)").setRequired(false))
-      .addStringOption((o) => o.setName("log_channel").setDescription("Log Channel (ID or Tag)").setRequired(false))
+      .addStringOption((o) => o.setName("staff_role").setDescription("Staff Role (ID or @Tag)").setRequired(false))
+      .addStringOption((o) => o.setName("log_channel").setDescription("Log Channel (ID or #Tag)").setRequired(false))
   )
   .addSubcommand((sub) =>
     sub
@@ -43,7 +43,7 @@ export const data = new SlashCommandBuilder()
       .addStringOption((o) =>
         o.setName("type")
           .setDescription("Select the type of ticket")
-          .setRequired(true) // Explicitly required
+          .setRequired(true) // Required for slash command
           .addChoices(
             { name: "Support", value: "Support" },
             { name: "Appeal", value: "Appeal" },
@@ -74,8 +74,12 @@ export async function execute(interaction) {
   if (sub === "setup") {
     if (!isAdmin(interaction.member)) return denyAdmin(interaction);
 
-    // Helper to extract raw ID from mentions (<@&ID>, <#ID>, etc)
-    const getRawId = (str) => str ? str.replace(/[^0-9]/g, "") : null;
+    // Improved helper: Strips all non-numeric characters (handles <@&...>, <#...>, etc)
+    const getRawId = (str) => {
+      if (!str) return null;
+      const clean = str.replace(/[^0-9]/g, "");
+      return clean.length > 0 ? clean : null;
+    };
 
     const updates = {
       supportCategoryId: getRawId(interaction.options.getString("support_category")),
@@ -85,17 +89,25 @@ export async function execute(interaction) {
       logChannelId: getRawId(interaction.options.getString("log_channel")),
     };
 
-    // Role validation
+    // Quick verify for the staff role specifically
     if (updates.staffRoleId) {
       const role = interaction.guild.roles.cache.get(updates.staffRoleId);
-      if (!role) return interaction.reply({ content: "❌ Invalid Role ID/Tag. Please try again.", ephemeral: true });
+      if (!role) {
+        return interaction.reply({ 
+          content: `❌ I couldn't find a role with ID \`${updates.staffRoleId}\`. Please make sure you paste the ID or tag a real role.`, 
+          ephemeral: true 
+        });
+      }
     }
 
     const existing = ticketConfig.get(interaction.guildId) || {};
     Object.keys(updates).forEach(k => { if (updates[k]) existing[k] = updates[k]; });
     ticketConfig.set(interaction.guildId, existing);
 
-    return interaction.reply({ content: "🌸 Ticket configuration updated! Tags and mentions were automatically converted to IDs.", ephemeral: true });
+    return interaction.reply({ 
+      content: "🌸 **Setup Complete!** I have saved your settings and converted all tags/mentions into raw IDs.", 
+      ephemeral: true 
+    });
   }
 
   // 2. PANEL COMMAND
@@ -105,7 +117,7 @@ export async function execute(interaction) {
     const embed = new EmbedBuilder()
       .setColor(NILOU_RED)
       .setTitle("✦ Support Tickets")
-      .setDescription(`${DIVIDER}\n🌸 Click a button to open a ticket.\n\n🎫 **Support**\n⚖️ **Appeal**\n🤝 **Partnership**\n${DIVIDER}`)
+      .setDescription(`${DIVIDER}\n🌸 Click a button below to open a ticket channel.\n\n🎫 **Support**\n⚖️ **Appeal**\n🤝 **Partnership**\n${DIVIDER}`)
       .setFooter(FOOTER_MAIN);
 
     const row = new ActionRowBuilder().addComponents(
@@ -119,13 +131,16 @@ export async function execute(interaction) {
 
   // 3. OPEN COMMAND (Slash)
   if (sub === "open") {
-    const type = interaction.options.getString("type"); // Required check handled by Discord
+    const type = interaction.options.getString("type");
     const reason = interaction.options.getString("reason") || "No reason provided";
 
+    // Avoid "Interaction Failed" errors while processing
     await interaction.deferReply({ ephemeral: true });
 
     const result = await openTicket({ guild: interaction.guild, user: interaction.user, type, reason });
-    return interaction.editReply({ content: result.error ? `❌ ${result.error}` : `🌸 Your ticket is open: ${result.channel}!` });
+    return interaction.editReply({ 
+      content: result.error ? `❌ ${result.error}` : `🌸 Your ticket has been created: ${result.channel}!` 
+    });
   }
 
   // 4. CLOSE COMMAND
@@ -134,11 +149,11 @@ export async function execute(interaction) {
     const ticket = tickets.get(ticketId);
 
     if (!ticket && !interaction.channel.name.startsWith("ticket-")) {
-      return interaction.reply({ content: "❌ Not a ticket channel.", ephemeral: true });
+      return interaction.reply({ content: "❌ This is not a ticket channel.", ephemeral: true });
     }
 
     if (ticket && ticket.userId !== interaction.user.id && !isAdmin(interaction.member)) {
-      return interaction.reply({ content: "❌ You cannot close this ticket.", ephemeral: true });
+      return interaction.reply({ content: "❌ Only the ticket owner or staff can close this.", ephemeral: true });
     }
 
     await interaction.reply({ embeds: [closeEmbed(interaction.user)] });
@@ -165,27 +180,32 @@ export async function execute(interaction) {
 // --- CORE TICKET LOGIC ---
 
 export async function openTicket({ guild, user, type, reason }) {
-  const lockKey = `${guild.id}-${user.id}`;
+  const userId = user.id;
+  const now = Date.now();
 
-  if (activeCreations.has(lockKey)) {
-    return { error: "A ticket is already being created for you. Please wait." };
+  // Anti-Duplicate Lock: 5 second cooldown per user per guild
+  if (activeCreations.has(userId)) {
+    const lastCreation = activeCreations.get(userId);
+    if (now - lastCreation < 5000) {
+      return { error: "Please wait a few seconds before opening another ticket." };
+    }
   }
 
-  // Set lock
-  activeCreations.add(lockKey);
+  activeCreations.set(userId, now);
 
   try {
     const config = ticketConfig.get(guild.id) || {};
 
-    // Check for existing open ticket of SAME type to prevent accidental doubles
-    const existing = [...tickets.values()].find(t => t.userId === user.id && t.guildId === guild.id && t.open && t.type === type);
-    if (existing) return { error: `You already have an open **${type}** ticket!` };
+    // Check if user already has this specific type of ticket open
+    const existing = [...tickets.values()].find(t => t.userId === userId && t.guildId === guild.id && t.open && t.type === type);
+    if (existing) return { error: `You already have an active **${type}** ticket!` };
 
+    // Determine category based on type
     const categoryId = type === "Appeal" ? config.appealCategoryId : type === "Partnership" ? config.partnershipCategoryId : config.supportCategoryId;
 
     const overwrites = [
       { id: guild.id, deny: [PermissionFlagsBits.ViewChannel] },
-      { id: user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles] },
+      { id: userId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles] },
       { id: guild.client.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageChannels] }
     ];
 
@@ -198,36 +218,38 @@ export async function openTicket({ guild, user, type, reason }) {
       type: ChannelType.GuildText,
       parent: categoryId || null,
       permissionOverwrites: overwrites,
-      topic: `${type} | ${user.tag}`
+      topic: `${type} Ticket | User: ${user.tag}`
     });
 
-    tickets.set(`${guild.id}:${channel.id}`, { 
-      guildId: guild.id, userId: user.id, channelId: channel.id, type, open: true 
+    const ticketId = `${guild.id}:${channel.id}`;
+    tickets.set(ticketId, { 
+      guildId: guild.id, userId: userId, channelId: channel.id, type, open: true 
     });
 
     const embed = new EmbedBuilder()
       .setColor(NILOU_RED)
       .setTitle(`✦ ${type} Ticket`)
-      .setDescription(`${DIVIDER}\n🌸 Welcome ${user}!\nReason: **${reason}**\n${DIVIDER}`)
+      .setDescription(`${DIVIDER}\n🌸 Hello ${user}!\n\n**Reason:** ${reason}\n\nPlease wait for staff assistance.\n${DIVIDER}`)
       .setFooter(FOOTER_MAIN);
 
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId("close_ticket").setLabel("Close").setStyle(ButtonStyle.Danger).setEmoji("🔒")
     );
 
+    const ping = config.staffRoleId ? `<@&${config.staffRoleId}> ${user}` : `${user}`;
     await channel.send({ 
-      content: config.staffRoleId ? `<@&${config.staffRoleId}> ${user}` : `${user}`, 
+      content: ping, 
       embeds: [embed], 
       components: [row] 
     });
 
     return { channel };
   } catch (err) {
-    console.error(err);
-    return { error: "Failed to create channel. Check my permissions." };
+    console.error("Error creating ticket:", err);
+    return { error: "I couldn't create the ticket. Check if I have 'Manage Channels' permissions." };
   } finally {
-    // Release lock after delay
-    setTimeout(() => activeCreations.delete(lockKey), 3000);
+    // Clear lock after 5 seconds
+    setTimeout(() => activeCreations.delete(userId), 5000);
   }
 }
 
@@ -246,7 +268,7 @@ export async function closeTicket(channel, ticket, ticketId, user, guild) {
         const log = new EmbedBuilder()
           .setColor(NILOU_RED)
           .setTitle("✦ Ticket Closed")
-          .setDescription(`User: <@${ticket.userId}>\nType: ${ticket.type}\nClosed By: ${user}`)
+          .setDescription(`**User:** <@${ticket.userId}>\n**Type:** ${ticket.type}\n**Closed By:** ${user}`)
           .setTimestamp();
         logCh.send({ embeds: [log] }).catch(() => {});
       }
@@ -265,6 +287,6 @@ export function closeEmbed(user) {
   return new EmbedBuilder()
     .setColor(NILOU_RED)
     .setTitle("✦ Closing Ticket")
-    .setDescription(`${DIVIDER}\n🌸 Ticket closing by ${user}.\nDeleting in **5 seconds**.\n${DIVIDER}`)
+    .setDescription(`${DIVIDER}\n🌸 Ticket is being closed by ${user}.\nDeleting in **5 seconds**...\n${DIVIDER}`)
     .setFooter(FOOTER_MAIN);
 }
