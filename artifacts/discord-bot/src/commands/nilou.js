@@ -1,9 +1,8 @@
 import { SlashCommandBuilder } from "discord.js";
-import { DIVIDER } from "../theme.js";
 
 /**
  * Nilou Image Database
- * Using verified direct i.pinimg.com links.
+ * Only verified direct i.pinimg.com links.
  */
 const NILOU_LINKS = [
   "https://i.pinimg.com/736x/5a/14/1f/5a141f04de343cacd31050521fb61e24.jpg",
@@ -14,18 +13,9 @@ const NILOU_LINKS = [
   "https://i.pinimg.com/736x/42/8b/87/428b87055e17039c405abf95f12ca616.jpg"
 ];
 
-const CAPTIONS = [
-  "A dance for the waters of Sumeru 🌊",
-  "May the Sabzeruz Festival be eternal 🌸",
-  "Her steps echo the rhythm of the rain 💧",
-  "Nilou of the Zubayr Theater dances for you 🌺",
-  "The flowers bloom in her footsteps 🌷",
-  "Grace defined by the rhythm of the stage ✨"
-];
-
 export const data = new SlashCommandBuilder()
   .setName("nilou")
-  .setDescription("Get a random Nilou image from the Zubayr Theater");
+  .setDescription("Get a random Nilou image");
 
 /**
  * Executes the /nilou command
@@ -33,26 +23,12 @@ export const data = new SlashCommandBuilder()
  */
 export async function execute(interaction) {
   const image = NILOU_LINKS[Math.floor(Math.random() * NILOU_LINKS.length)];
-  const caption = CAPTIONS[Math.floor(Math.random() * CAPTIONS.length)];
 
   try {
-    // 1. Acknowledge the command immediately
-    await interaction.reply({ content: "🌸 Drawing the curtains...", ephemeral: true });
-
-    // 2. Send the image and caption as a plain message
-    // This allows Discord to use its native image previewer
-    await interaction.channel.send({ 
-      content: `**✦ Nilou — Dancer of the Zubayr Theater**\n${DIVIDER}\n${caption}\n${image}` 
-    });
-
+    // Reply directly with just the image link
+    // Discord will automatically expand this into a full image preview
+    await interaction.reply({ content: image });
   } catch (error) {
     console.error("Error displaying Nilou image:", error);
-
-    const errorMsg = { content: "💧 The stage is being prepared, please try again!", ephemeral: true };
-    if (interaction.replied || interaction.deferred) {
-      await interaction.followUp(errorMsg);
-    } else {
-      await interaction.reply(errorMsg);
-    }
   }
 }
