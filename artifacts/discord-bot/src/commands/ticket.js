@@ -270,11 +270,17 @@ export async function openTicket({ guild, user, type, reason = "No reason provid
       }
     ];
 
+    // FIX: Added safety check for Staff Role to prevent "Supplied parameter is not a cached User or Role"
     if (config.staffRoleId) {
-      permissionOverwrites.push({
-        id: config.staffRoleId,
-        allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory],
-      });
+      const role = guild.roles.cache.get(config.staffRoleId);
+      if (role) {
+        permissionOverwrites.push({
+          id: config.staffRoleId,
+          allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory],
+        });
+      } else {
+        console.warn(`[Tickets] Configured Staff Role ID ${config.staffRoleId} not found in guild cache.`);
+      }
     }
 
     const channelName = `ticket-${user.username.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 15)}`;
