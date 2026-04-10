@@ -1,0 +1,60 @@
+1. /register [uid]
+Prompt/Logic: Create a command that accepts a 9-digit integer. Validate that it's a valid UID format (starts with 1, 2, 5, 6, 7, 8, or 9). Save the discord_id and uid to a database (SQLite or MongoDB).
+
+Response: "✅ Successfully linked UID [UID] to your account! You can now use /profile or /build."
+
+2. /about
+Prompt/Logic: A static command providing bot info and proper attribution.
+
+Response (Embed): * Title: About [Bot Name]
+
+Description: "This bot fetches data via the Enka.Network API and calculates rankings based on the Akasha System algorithms."
+
+Credits: "Data provided by Enka.Network. Rankings and calculations inspired by Akasha.cv. All assets belong to HoYoverse."
+
+3. /profile
+Prompt/Logic: Fetch the player object. Display:
+
+Adventure Rank, Achievements, Signature.
+
+Spiral Abyss: towerFloorIndex-towerLevelIndex.
+
+Imaginarium Theater: theaterFloorIndex and theaterStarCount.
+
+Showcase: A list of the 8 characters currently in the user's in-game profile.
+
+4. /list [category]
+Prompt/Logic: A command with a choice of characters or artifacts.
+
+If characters: List all 8 showcase characters with their levels and Crit Value (CV).
+
+If artifacts: List the top 5 artifacts equipped on the current showcase characters, sorted by CV.
+
+CV Calculation: (CritRate×2)+CritDMG.
+
+5. /build [character_name] [hide_details]
+Prompt/Logic: * character_name: Use a String option with autocomplete for the 8 characters in their showcase.
+
+hide_details: A Boolean (True/False).
+
+Action: If hide_details is True, use Canvas to redact/blur the UID and the In-Game Name on the final image. The image should mimic the Akasha/Enka layout showing artifacts, stats, and the character card.
+
+6. /cv_calc [crit_rate] [crit_dmg]
+Prompt/Logic: Simple math command.
+
+Calculation: CV=(crit_rate×2)+crit_dmg
+
+Response: "Your artifact has a [CV] CV. (Rating: [Fledgling/Good/Great/Godly])"
+
+7. /top_artifacts
+Prompt/Logic: Scans all 8 characters in the showcase. Extracts every artifact. Sorts them by CV.
+
+Output: An embed showing the "Hall of Fame" for the user's gear.
+
+Flower: 45.2 CV (Raiden Shogun)
+Circlet: 38.0 CV (Yelan)
+
+Implementation Snippet for Replit AI
+If you are asking the Replit AI to code the Hide UID/Name logic specifically, use this prompt:
+
+"Write a Discord.js function using @napi-rs/canvas that takes a character build image and a boolean hide_details. If hide_details is true, draw a solid dark rectangle or a blur effect over the coordinates where the UID and Player Name are typically located (bottom left and top left). Return the modified buffer."
