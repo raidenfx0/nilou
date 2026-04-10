@@ -2,15 +2,15 @@ import { SlashCommandBuilder, EmbedBuilder } from "discord.js";
 import { NILOU_RED, FOOTER_MAIN, DIVIDER } from "../theme.js";
 
 const NILOU_IMAGES = [
-  "https://static.wikia.nocookie.net/gensin-impact/images/d/d0/Character_Nilou_Full_Wish.png",
-  "https://static.wikia.nocookie.net/gensin-impact/images/6/68/Character_Nilou_Portrait.png",
-  "https://static.wikia.nocookie.net/gensin-impact/images/5/5f/Character_Nilou_Card.png",
-  "https://static.wikia.nocookie.net/gensin-impact/images/4/42/Nilou_Constellation.png",
-  "https://static.wikia.nocookie.net/gensin-impact/images/8/8a/Character_Nilou_Thumb.png",
-  "https://upload-os-bbs.hoyolab.com/upload/2022/09/16/c3b761f2bc5c5afee94bd2ea2e7c6899_7977508248823726047.png",
-  "https://upload-os-bbs.hoyolab.com/upload/2022/10/23/74d6b72b14c3543a3f7e1d1cc26e5fa0_3218791041745979543.png",
-  "https://upload-os-bbs.hoyolab.com/upload/2023/01/13/4f6f5b2b3a2b3a2b3a2b3a2b3a2b3a2b_0000000000000000000.png",
-  "https://act-webstatic.hoyoverse.com/game_record/genshin/character_thumbnail/UI_AvatarIcon_Nilou.png",
+  "https://cdn.discordapp.com/attachments/1284165907362484233/1492133517252100217/Nilou_Edit.jpeg?ex=69da3921&is=69d8e7a1&hm=d416fec141bd53f45104f6f3080fcfa3846ee7548c8c7728b9f230751c6c3000&",
+  "https://cdn.discordapp.com/attachments/1284165907362484233/1492133518346813482/Nilou___Genshin_Impact.jpeg?ex=69da3921&is=69d8e7a1&hm=e46445185a2c52fb30a4c99c83fc72c01f1ac3dd5795691f7778e2553c8338f7&",
+  "https://cdn.discordapp.com/attachments/1284165907362484233/1492133518732562605/Nilou_2.jpeg?ex=69da3921&is=69d8e7a1&hm=5b3606ad29cd223af3ba92bfa2767744f125cfe82432d8170040c7bd1fba26f0&",
+  "https://cdn.discordapp.com/attachments/1284165907362484233/1492133519084753046/Nilou_1.jpeg?ex=69da3921&is=69d8e7a1&hm=1a3586c829ef6b939949d0f79c93fd8670640dbab7ae9f33da0c0f452d91f0cd&",
+  "https://cdn.discordapp.com/attachments/1284165907362484233/1492133519399452762/Nilou_Genshin_Impact.jpeg?ex=69da3921&is=69d8e7a1&hm=188df9b5f4b37cdc6245ca978112ab732b5a1ff6f724b90455787c60463ef344&",
+  "https://cdn.discordapp.com/attachments/1284165907362484233/1492133519722418206/Nilou_-_Genshin.jpeg?ex=69da3921&is=69d8e7a1&hm=90efe0e0e1054b9ed966d7c27b87612f31a8bb90408842f97f8ebc9d7adf907d&",
+  "https://cdn.discordapp.com/attachments/1284165907362484233/1492133621002403971/nilou.jpeg?ex=69da3939&is=69d8e7b9&hm=022c8b4ef1b2c579a036dd905c9b9f6a8aa668cd8ba4f652152805b2d32caf8e&",
+  "https://cdn.discordapp.com/attachments/1284165907362484233/1492133621392347299/download_6.jpeg?ex=69da3939&is=69d8e7b9&hm=f1f5e10998fb0622336f33865ed148f97cb8feced7fd8ef5325a134cac5fa8c9&",
+  "https://cdn.discordapp.com/attachments/1178069457256587364/1207453399235170314/20240214_222525.jpg?ex=69da225b&is=69d8d0db&hm=0520b73e90a14f193b2462d8f51ef2f8669d4a910f19226990474c87eaac3347",
 ];
 
 const CAPTIONS = [
