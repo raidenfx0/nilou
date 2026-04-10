@@ -2,18 +2,16 @@ import { SlashCommandBuilder, EmbedBuilder } from "discord.js";
 import { NILOU_RED, FOOTER_MAIN, DIVIDER } from "../theme.js";
 
 /**
- * We use optimized image URLs. 
- * Note: Some wikia links need the part after '.png' or '.jpg' removed 
- * to be viewed directly in Discord embeds.
+ * Nilou Image Database
+ * Only using links verified and provided by the user.
  */
-const NILOU_IMAGES = [
-  "https://static.wikia.nocookie.net/gensin-impact/images/5/58/Character_Nilou_Card.png",
-  "https://static.wikia.nocookie.net/gensin-impact/images/a/a2/Nilou_Icon.png",
-  "https://static.wikia.nocookie.net/gensin-impact/images/2/22/Character_Nilou_Wish.png",
-  "https://static.wikia.nocookie.net/gensin-impact/images/b/b3/Character_Nilou_Full_Wish.png",
-  "https://static.wikia.nocookie.net/gensin-impact/images/f/f6/Nilou_Birthday_2023.png",
-  "https://static.wikia.nocookie.net/gensin-impact/images/a/a5/Nilou_Birthday_2022.png",
-  "https://pbs.twimg.com/media/Fdb8m70XoAAnuS0?format=jpg&name=large"
+const NILOU_LINKS = [
+  "https://i.pinimg.com/736x/5a/14/1f/5a141f04de343cacd31050521fb61e24.jpg",
+  "https://i.pinimg.com/1200x/d7/ab/1f/d7ab1f31912239283962bf19f13a794c.jpg",
+  "https://i.pinimg.com/736x/a6/20/a3/a620a3ae8c6f8e22f3258053a812674.jpg",
+  "https://i.pinimg.com/1200x/6b/7b/cd/6b7bcd55563fa857c9db212ee75fe017.jpg",
+  "https://i.pinimg.com/1200x/67/7c/12/677c12ab88baf61605c8ce92c42ac3bd.jpg",
+  "https://i.pinimg.com/1200x/42/8b/87/428b87055e17039c405abf95f12ca616.jpg"
 ];
 
 const CAPTIONS = [
@@ -21,22 +19,16 @@ const CAPTIONS = [
   "May the Sabzeruz Festival be eternal 🌸",
   "Her steps echo the rhythm of the rain 💧",
   "Nilou of the Zubayr Theater dances for you 🌺",
-  "Let the flowers bloom wherever she treads 🌷",
-  "The most graceful dancer under the sun ✨",
-  "Her heart dances for all of Sumeru 🎊",
-  "Even the gods pause to watch her perform 🌙",
+  "The flowers bloom in her footsteps 🌷",
+  "Grace defined by the rhythm of the stage ✨"
 ];
 
 export const data = new SlashCommandBuilder()
   .setName("nilou")
   .setDescription("Get a random Nilou image from the Zubayr Theater");
 
-/**
- * @param {import('discord.js').ChatInputCommandInteraction} interaction 
- */
 export async function execute(interaction) {
-  // Select random elements
-  const image = NILOU_IMAGES[Math.floor(Math.random() * NILOU_IMAGES.length)];
+  const image = NILOU_LINKS[Math.floor(Math.random() * NILOU_LINKS.length)];
   const caption = CAPTIONS[Math.floor(Math.random() * CAPTIONS.length)];
 
   const embed = new EmbedBuilder()
@@ -48,17 +40,9 @@ export async function execute(interaction) {
     .setTimestamp();
 
   try {
-    // Ensuring the interaction is handled safely
     await interaction.reply({ embeds: [embed] });
   } catch (error) {
-    console.error("Error sending Nilou embed:", error);
-
-    const errorMessage = { content: "The dance was interrupted! (Image display error)", ephemeral: true };
-
-    if (interaction.replied || interaction.deferred) {
-        await interaction.followUp(errorMessage);
-    } else {
-        await interaction.reply(errorMessage);
-    }
+    console.error("Error displaying Nilou image:", error);
+    await interaction.reply({ content: "The stage is being prepared, please try again!", ephemeral: true });
   }
 }
