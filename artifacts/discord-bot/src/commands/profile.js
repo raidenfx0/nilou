@@ -1,8 +1,17 @@
 import { SlashCommandBuilder, EmbedBuilder } from "discord.js";
+import { clsx, type ClassValue } from "clsx";
+import { twMerge } from "tailwind-merge";
 import { getUid } from "../db/uidStore.js";
 import { fetchProfile, parsePlayerInfo, parseCharacters } from "../utils/enka.js";
 import { rateCV } from "../utils/genshinData.js";
 import { NILOU_RED, FOOTER_GENSHIN, DIVIDER } from "../theme.js";
+
+/**
+ * Utility to merge tailwind classes (useful if extending this to a web dashboard)
+ */
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
 
 export const data = new SlashCommandBuilder()
   .setName("profile")
@@ -29,9 +38,9 @@ export async function execute(interaction) {
 
   let rawData;
   try {
-    // We still fetch through Enka as it is the data source for Akasha
+    // Akasha pulls from Enka, so we fetch the base data first
     rawData = await fetchProfile(uid);
-    if (!rawData) throw new Error("No data received.");
+    if (!rawData) throw new Error("Could not find data for this UID.");
   } catch (err) {
     return interaction.editReply({ content: `❌ Error: ${err.message}` });
   }
@@ -43,24 +52,27 @@ export async function execute(interaction) {
   let showcaseList = "";
   if (characters && characters.length > 0) {
     showcaseList = characters.map((c, i) => {
-      // If your utils/enka.js parser supports Akasha ranks, we show them here
-      const rankInfo = c.akashaRank ? ` | **Top ${c.akashaRank}%**` : "";
-      return `${i + 1}. **${c.name}** · Lv.${c.level}${rankInfo}\n  └ CV: ${c.totalCV} (${rateCV(c.totalCV)})`;
+      // Logic for displaying the Akasha Leaderboard rank
+      const isTopTier = c.akashaRank <= 1;
+      const rankEmoji = isTopTier ? "👑 " : "⭐ ";
+      const rankText = c.akashaRank ? `Top **${c.akashaRank}%**` : "*Unranked*";
+
+      return `${i + 1}. ${rankEmoji}**${c.name}** · Lv.${c.level} | ${rankText}\n  └ CV: ${c.totalCV} (${rateCV(c.totalCV)})`;
     }).join("\n");
   } else {
-    showcaseList = "❌ **No character details found.**\n*Go to [Akasha.cv](https://akasha.cv/profile/" + uid + ") and hit 'Refresh' to wake up the system!*";
+    showcaseList = "❌ **No character details found.**\n*Ensure \"Show Character Details\" is ON in-game and you have refreshed at [Akasha.cv](https://akasha.cv/profile/" + uid + ")!*";
   }
 
   const embed = new EmbedBuilder()
     .setColor(NILOU_RED)
     .setTitle(`✦ ${p.nickname}'s Akasha Profile`)
-    .setURL(`https://akasha.cv/profile/${uid}`) // Direct link to Akasha
+    .setURL(`https://akasha.cv/profile/${uid}`)
     .setThumbnail(`https://enka.network/ui/${p.avatarIcon}.png`)
-    .setDescription(`${DIVIDER}\n🌸 UID: \`${p.uid}\`\n🔗 [View on Akasha System](https://akasha.cv/profile/${uid})\n${DIVIDER}`)
+    .setDescription(`${DIVIDER}\n🌸 UID: \`${p.uid}\`\n🔗 [Open Akasha Leaderboards](https://akasha.cv/profile/${uid})\n${DIVIDER}`)
     .addFields(
       {
-        name: "🗺️ Explorer",
-        value: `AR: **${p.ar}**\nAchievements: **${p.achievements}**`,
+        name: "🗺️ Explorer Info",
+        value: `AR: **${p.ar}**\nAchievements: **${p.achievements.toLocaleString()}**`,
         inline: true,
       },
       {
@@ -69,17 +81,17 @@ export async function execute(interaction) {
         inline: true,
       },
       {
-        name: "🏆 Character Leaderboards",
+        name: "🏆 Showcase Rankings",
         value: showcaseList,
         inline: false,
       }
     )
     .addFields({ 
         name: "🕒 Last Sync", 
-        value: p.updatedAt ? `<t:${Math.floor(p.updatedAt / 1000)}:R>` : "Recent", 
+        value: p.updatedAt ? `<t:${Math.floor(p.updatedAt / 1000)}:R>` : "Recently", 
         inline: false 
     })
-    .setFooter({ text: "Data synced via Akasha & Enka Network" })
+    .setFooter({ text: "Data provided by Akasha System & Enka.Network" })
     .setTimestamp();
 
   await interaction.editReply({ embeds: [embed] });
