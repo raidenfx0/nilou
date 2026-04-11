@@ -17,7 +17,7 @@ export async function execute(interaction) {
   await interaction.deferReply();
 
   const target = interaction.options.getUser("user") || interaction.user;
-  const uid    = getUid(target.id);
+  const uid = getUid(target.id);
 
   if (!uid) {
     return interaction.editReply({
@@ -27,47 +27,45 @@ export async function execute(interaction) {
     });
   }
 
-  let data;
+  let rawData;
   try {
-    data = await fetchProfile(uid);
+    rawData = await fetchProfile(uid);
+    if (!rawData) throw new Error("No data received from Enka.");
   } catch (err) {
-    return interaction.editReply({ content: `❌ ${err.message}` });
+    return interaction.editReply({ content: `❌ Error fetching data: ${err.message}` });
   }
 
-  const p          = parsePlayerInfo(data);
-  const characters = parseCharacters(data);
+  const p = parsePlayerInfo(rawData);
+  const characters = parseCharacters(rawData);
 
-  const showcaseList = characters.length > 0
-    ? characters.map((c, i) =>
-        `${i + 1}. **${c.name}** · Lv.${c.level} · CV ${c.totalCV} (${rateCV(c.totalCV)})`
-      ).join("\n")
-    : p.showcaseIds.length > 0
-    ? `${p.showcaseIds.length} characters (set profile to public for details)`
-    : "No characters in showcase.";
+  // Format the character list with a fallback if empty
+  let showcaseList = "";
+  if (characters && characters.length > 0) {
+    showcaseList = characters.map((c, i) =>
+      `${i + 1}. **${c.name}** · Lv.${c.level} · CV ${c.totalCV} (${rateCV(c.totalCV)})`
+    ).join("\n");
+  } else {
+    showcaseList = "❌ **No character details found.**\n*Ensure \"Show Character Details\" is ON in-game and you've refreshed on Enka.network!*";
+  }
 
   const embed = new EmbedBuilder()
     .setColor(NILOU_RED)
     .setTitle(`✦ ${p.nickname}'s Profile`)
+    .setThumbnail(`https://enka.network/ui/${p.avatarIcon}.png`) // Optional: adds player avatar
     .setDescription(`${DIVIDER}\n🌸 UID: \`${p.uid}\`\n${DIVIDER}`)
     .addFields(
       {
         name: "🗺️ Player Info",
         value:
-          `Adventure Rank: **${p.ar}** (WL${p.worldLevel})\n` +
+          `AR: **${p.ar}** (WL${p.worldLevel})\n` +
           `Achievements: **${p.achievements.toLocaleString()}**\n` +
-          (p.signature ? `Signature: *${p.signature}*` : ""),
+          (p.signature ? `Sig: *${p.signature}*` : ""),
         inline: true,
       },
       {
-        name: "🌀 Spiral Abyss",
-        value: p.abyssFloor > 0
-          ? `Floor **${p.abyssFloor}**-${p.abyssLevel}` : "No data",
-        inline: true,
-      },
-      {
-        name: "🎭 Imaginarium Theater",
-        value: p.theaterFloor > 0
-          ? `Act **${p.theaterFloor}** · ⭐ ${p.theaterStars}` : "No data",
+        name: "🌀 Battle Stats",
+        value: `Abyss: **${p.abyssFloor}-${p.abyssLevel}**\n` +
+               `Theater: **Act ${p.theaterFloor}** (⭐${p.theaterStars})`,
         inline: true,
       },
       {
@@ -76,6 +74,12 @@ export async function execute(interaction) {
         inline: false,
       }
     )
+    // Adding a relative timestamp helps users see if the data is old
+    .addFields({ 
+        name: "🕒 Data Last Updated", 
+        value: p.updatedAt ? `<t:${Math.floor(p.updatedAt / 1000)}:R>` : "Just now", 
+        inline: false 
+    })
     .setFooter(FOOTER_GENSHIN)
     .setTimestamp();
 
