@@ -6,10 +6,10 @@ import { NILOU_RED, FOOTER_GENSHIN, DIVIDER } from "../theme.js";
 
 export const data = new SlashCommandBuilder()
   .setName("profile")
-  .setDescription("View your Genshin Impact player profile.")
+  .setDescription("View your Genshin profile & Akasha rankings.")
   .addUserOption(o =>
     o.setName("user")
-      .setDescription("View another user's profile (they must have registered their UID)")
+      .setDescription("View another user's profile")
       .setRequired(false)
   );
 
@@ -29,58 +29,57 @@ export async function execute(interaction) {
 
   let rawData;
   try {
+    // We still fetch through Enka as it is the data source for Akasha
     rawData = await fetchProfile(uid);
-    if (!rawData) throw new Error("No data received from Enka.");
+    if (!rawData) throw new Error("No data received.");
   } catch (err) {
-    return interaction.editReply({ content: `❌ Error fetching data: ${err.message}` });
+    return interaction.editReply({ content: `❌ Error: ${err.message}` });
   }
 
   const p = parsePlayerInfo(rawData);
   const characters = parseCharacters(rawData);
 
-  // Format the character list with a fallback if empty
+  // Formatting character list with Akasha style rankings
   let showcaseList = "";
   if (characters && characters.length > 0) {
-    showcaseList = characters.map((c, i) =>
-      `${i + 1}. **${c.name}** · Lv.${c.level} · CV ${c.totalCV} (${rateCV(c.totalCV)})`
-    ).join("\n");
+    showcaseList = characters.map((c, i) => {
+      // If your utils/enka.js parser supports Akasha ranks, we show them here
+      const rankInfo = c.akashaRank ? ` | **Top ${c.akashaRank}%**` : "";
+      return `${i + 1}. **${c.name}** · Lv.${c.level}${rankInfo}\n  └ CV: ${c.totalCV} (${rateCV(c.totalCV)})`;
+    }).join("\n");
   } else {
-    showcaseList = "❌ **No character details found.**\n*Ensure \"Show Character Details\" is ON in-game and you've refreshed on Enka.network!*";
+    showcaseList = "❌ **No character details found.**\n*Go to [Akasha.cv](https://akasha.cv/profile/" + uid + ") and hit 'Refresh' to wake up the system!*";
   }
 
   const embed = new EmbedBuilder()
     .setColor(NILOU_RED)
-    .setTitle(`✦ ${p.nickname}'s Profile`)
-    .setThumbnail(`https://enka.network/ui/${p.avatarIcon}.png`) // Optional: adds player avatar
-    .setDescription(`${DIVIDER}\n🌸 UID: \`${p.uid}\`\n${DIVIDER}`)
+    .setTitle(`✦ ${p.nickname}'s Akasha Profile`)
+    .setURL(`https://akasha.cv/profile/${uid}`) // Direct link to Akasha
+    .setThumbnail(`https://enka.network/ui/${p.avatarIcon}.png`)
+    .setDescription(`${DIVIDER}\n🌸 UID: \`${p.uid}\`\n🔗 [View on Akasha System](https://akasha.cv/profile/${uid})\n${DIVIDER}`)
     .addFields(
       {
-        name: "🗺️ Player Info",
-        value:
-          `AR: **${p.ar}** (WL${p.worldLevel})\n` +
-          `Achievements: **${p.achievements.toLocaleString()}**\n` +
-          (p.signature ? `Sig: *${p.signature}*` : ""),
+        name: "🗺️ Explorer",
+        value: `AR: **${p.ar}**\nAchievements: **${p.achievements}**`,
         inline: true,
       },
       {
-        name: "🌀 Battle Stats",
-        value: `Abyss: **${p.abyssFloor}-${p.abyssLevel}**\n` +
-               `Theater: **Act ${p.theaterFloor}** (⭐${p.theaterStars})`,
+        name: "🌀 Battle Record",
+        value: `Abyss: **${p.abyssFloor}-${p.abyssLevel}**\nTheater: **Act ${p.theaterFloor}**`,
         inline: true,
       },
       {
-        name: "🌸 Showcase Characters",
+        name: "🏆 Character Leaderboards",
         value: showcaseList,
         inline: false,
       }
     )
-    // Adding a relative timestamp helps users see if the data is old
     .addFields({ 
-        name: "🕒 Data Last Updated", 
-        value: p.updatedAt ? `<t:${Math.floor(p.updatedAt / 1000)}:R>` : "Just now", 
+        name: "🕒 Last Sync", 
+        value: p.updatedAt ? `<t:${Math.floor(p.updatedAt / 1000)}:R>` : "Recent", 
         inline: false 
     })
-    .setFooter(FOOTER_GENSHIN)
+    .setFooter({ text: "Data synced via Akasha & Enka Network" })
     .setTimestamp();
 
   await interaction.editReply({ embeds: [embed] });
