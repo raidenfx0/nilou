@@ -48,6 +48,7 @@ export async function execute(interaction) {
   await interaction.deferReply();
 
   const charName   = interaction.options.getString("character");
+  const normalizedQuery = charName.trim().toLowerCase();
   const hideDetails = interaction.options.getBoolean("hide_details") ?? false;
   const target     = interaction.options.getUser("user") || interaction.user;
   const uid        = getUid(target.id);
@@ -67,10 +68,22 @@ export async function execute(interaction) {
   const p          = parsePlayerInfo(raw);
   const characters = parseCharacters(raw);
 
-  const character = characters.find(c =>
-    c.name.toLowerCase() === charName.toLowerCase() ||
-    c.name.toLowerCase().includes(charName.toLowerCase())
-  );
+  const exactMatches = characters.filter(c => c.name.toLowerCase() === normalizedQuery);
+  const prefixMatches = characters.filter(c => c.name.toLowerCase().startsWith(normalizedQuery));
+  const containsMatches = characters.filter(c => c.name.toLowerCase().includes(normalizedQuery));
+
+  const candidatePool = exactMatches.length
+    ? exactMatches
+    : (prefixMatches.length ? prefixMatches : containsMatches);
+
+  if (candidatePool.length > 1) {
+    const suggestions = candidatePool.slice(0, 8).map(c => c.name).join(", ");
+    return interaction.editReply({
+      content: `❌ Multiple characters match "${charName}". Please use a more specific name: ${suggestions}`,
+    });
+  }
+
+  const character = candidatePool[0];
 
   if (!character) {
     const names = characters.map(c => c.name).join(", ");
