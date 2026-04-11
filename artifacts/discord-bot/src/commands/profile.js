@@ -3,23 +3,11 @@ import { getUid } from "../db/uidStore.js";
 import { fetchProfile, parsePlayerInfo, parseCharacters } from "../utils/enka.js";
 import { rateCV } from "../utils/genshinData.js";
 import { NILOU_RED, FOOTER_GENSHIN, DIVIDER } from "../theme.js";
-import express from "express";
-
-/**
- * RENDER DEPLOYMENT FIX
- */
-const app = express();
-const port = process.env.PORT || 10000;
-app.get("/", (req, res) => res.send("Profile Service is active!"));
-app.listen(port, "0.0.0.0", () => {
-  console.log(`Health check listening on port ${port}`);
-});
 
 /**
  * CHARACTER NAME FIXER
- * If your bot shows "Unknown" or the wrong name, add the ID and correct Name here.
  */
-const CHAR_NAMES ={
+const CHAR_NAMES = {
   "10000002": "Kamisato Ayaka",
   "10000003": "Jean",
   "10000005": "Aether",
@@ -135,12 +123,9 @@ export async function execute(interaction) {
 
   const showcaseList = characters.length > 0
     ? characters.map((c, i) => {
-        // Set the lead icon to the first character in the showcase
         if (i === 0) leadCharacterIcon = c.icon;
 
-        // FIX: Check our internal name map first to avoid "Cyno/Nilou" mixups
         const finalName = CHAR_NAMES[c.id] || c.name || "Unknown Character";
-
         const isTopTier = c.akashaRank <= 1;
         const rankEmoji = isTopTier ? "👑 " : "⭐ ";
         const rankText = c.akashaRank ? ` | Top **${c.akashaRank}%**` : "";
