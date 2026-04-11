@@ -1,7 +1,19 @@
 import { SlashCommandBuilder, EmbedBuilder } from "discord.js";
 import { registerUid, getUid } from "../db/uidStore.js";
-import { fetchProfile } from "../utils/enka.js"; // You'll need this to check signatures
+import { fetchProfile } from "../utils/enka.js"; 
 import { NILOU_RED, FOOTER_GENSHIN, DIVIDER } from "../theme.js";
+import express from "express"; // Import express for the health check
+
+// --- RENDER DEPLOYMENT FIX ---
+// This small server tells Render the bot is "Healthy" 
+// so the deployment doesn't time out and fail.
+const app = express();
+const port = process.env.PORT || 10000;
+app.get("/", (req, res) => res.send("Akasha Bot is active!"));
+app.listen(port, "0.0.0.0", () => {
+  console.log(`Render health check listening on port ${port}`);
+});
+// -----------------------------
 
 const VALID_STARTS = new Set(["1","2","5","6","7","8","9"]);
 
@@ -20,7 +32,6 @@ export async function execute(interaction) {
   const uid = interaction.options.getInteger("uid");
   const str = String(uid);
 
-  // 1. Basic Validation
   if (!VALID_STARTS.has(str[0])) {
     return interaction.reply({
       content: "❌ Invalid UID. Must start with 1, 2, 5, 6, 7, 8, or 9.",
@@ -31,7 +42,6 @@ export async function execute(interaction) {
   await interaction.deferReply({ ephemeral: true });
 
   try {
-    // 2. Fetch profile from Enka to check signature
     const data = await fetchProfile(str);
     if (!data || !data.playerInfo) {
       return interaction.editReply("❌ Could not find this UID on Enka.Network. Make sure your profile is public!");
@@ -40,9 +50,6 @@ export async function execute(interaction) {
     const signature = data.playerInfo.signature || "";
     const verificationCode = `Akasha-${interaction.user.id.slice(-4)}`; 
 
-    // 3. Verification Check
-    // If the signature contains the code, we register it.
-    // Otherwise, we tell them what to put in their signature.
     if (signature.includes(verificationCode)) {
       const existing = getUid(interaction.user.id);
       registerUid(interaction.user.id, str);
@@ -60,7 +67,6 @@ export async function execute(interaction) {
 
       return interaction.editReply({ embeds: [successEmbed] });
     } else {
-      // 4. Verification Instructions
       const verifyEmbed = new EmbedBuilder()
         .setColor("#FFA500")
         .setTitle("🔒 Ownership Verification Required")
