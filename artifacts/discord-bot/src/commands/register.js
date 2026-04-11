@@ -2,21 +2,14 @@ import { SlashCommandBuilder, EmbedBuilder } from "discord.js";
 import { registerUid, getUid } from "../db/uidStore.js";
 import { fetchProfile } from "../utils/enka.js"; 
 import { NILOU_RED, FOOTER_GENSHIN, DIVIDER } from "../theme.js";
-import express from "express"; // Import express for the health check
 
-// --- RENDER DEPLOYMENT FIX ---
-// This small server tells Render the bot is "Healthy" 
-// so the deployment doesn't time out and fail.
-const app = express();
-const port = process.env.PORT || 10000;
-app.get("/", (req, res) => res.send("Akasha Bot is active!"));
-app.listen(port, "0.0.0.0", () => {
-  console.log(`Render health check listening on port ${port}`);
-});
-// -----------------------------
-
+// Valid UID prefixes for Genshin Impact regions
 const VALID_STARTS = new Set(["1","2","5","6","7","8","9"]);
 
+/**
+ * Slash Command: /register
+ * Logic: Fetches Enka.network profile and checks signature for a 4-digit verification code.
+ */
 export const data = new SlashCommandBuilder()
   .setName("register")
   .setDescription("Link and verify your Genshin Impact UID.")
@@ -32,6 +25,7 @@ export async function execute(interaction) {
   const uid = interaction.options.getInteger("uid");
   const str = String(uid);
 
+  // 1. Basic Validation
   if (!VALID_STARTS.has(str[0])) {
     return interaction.reply({
       content: "❌ Invalid UID. Must start with 1, 2, 5, 6, 7, 8, or 9.",
@@ -42,16 +36,19 @@ export async function execute(interaction) {
   await interaction.deferReply({ ephemeral: true });
 
   try {
+    // 2. Fetch data from Enka API
     const data = await fetchProfile(str);
     if (!data || !data.playerInfo) {
-      return interaction.editReply("❌ Could not find this UID on Enka.Network. Make sure your profile is public!");
+      return interaction.editReply("❌ Could not find this UID on Enka.Network. Make sure your 'Show Character Details' is public in-game!");
     }
 
     const signature = data.playerInfo.signature || "";
+    // Verification code is based on the last 4 digits of the user's Discord ID
     const verificationCode = `Akasha-${interaction.user.id.slice(-4)}`; 
 
+    // 3. Check if signature matches the verification requirement
     if (signature.includes(verificationCode)) {
-      const existing = getUid(interaction.user.id);
+      // Save to database
       registerUid(interaction.user.id, str);
 
       const successEmbed = new EmbedBuilder()
@@ -67,6 +64,7 @@ export async function execute(interaction) {
 
       return interaction.editReply({ embeds: [successEmbed] });
     } else {
+      // 4. Instructions for verification
       const verifyEmbed = new EmbedBuilder()
         .setColor("#FFA500")
         .setTitle("🔒 Ownership Verification Required")
@@ -74,7 +72,7 @@ export async function execute(interaction) {
           `To prevent linking accounts you don't own, please follow these steps:\n\n` +
           `1. Open Genshin Impact.\n` +
           `2. Change your **In-game Signature** to: \`${verificationCode}\`\n` +
-          `3. Wait 1-2 minutes for Enka to update.\n` +
+          `3. Wait 1-2 minutes for Enka to update (Profile refresh).\n` +
           `4. Run this command again.\n\n` +
           `*Current Signature detected:* \`${signature || "Empty"}\``
         )
@@ -83,6 +81,7 @@ export async function execute(interaction) {
       return interaction.editReply({ embeds: [verifyEmbed] });
     }
   } catch (err) {
+    console.error(err);
     return interaction.editReply(`❌ Error connecting to Enka: ${err.message}`);
   }
 }
