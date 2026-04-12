@@ -32,7 +32,7 @@ export async function autocomplete(interaction) {
 
   try {
     const raw        = await fetchProfile(uid);
-    const characters = parseCharacters(raw);
+    const characters = await parseCharacters(raw);
     const focused    = interaction.options.getFocused().toLowerCase();
     const choices    = characters
       .filter(c => c.name.toLowerCase().includes(focused))
@@ -66,7 +66,7 @@ export async function execute(interaction) {
   catch (err) { return interaction.editReply({ content: `❌ ${err.message}` }); }
 
   const p          = parsePlayerInfo(raw);
-  const characters = parseCharacters(raw);
+  const characters = await parseCharacters(raw);
 
   const exactMatches = characters.filter(c => c.name.toLowerCase() === normalizedQuery);
   const prefixMatches = characters.filter(c => c.name.toLowerCase().startsWith(normalizedQuery));

@@ -36,7 +36,7 @@ export async function execute(interaction) {
   }
 
   const p = parsePlayerInfo(profileData);
-  const characters = parseCharacters(profileData);
+  const characters = await parseCharacters(profileData);
 
   const leadCharacterIcon = characters[0] ? `UI_AvatarIcon_${characters[0].avatarId}` : null;
 

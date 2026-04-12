@@ -32,7 +32,7 @@ export async function execute(interaction) {
   catch (err) { return interaction.editReply({ content: `❌ ${err.message}` }); }
 
   const p          = parsePlayerInfo(raw);
-  const characters = parseCharacters(raw);
+  const characters = await parseCharacters(raw);
 
   if (characters.length === 0) {
     return interaction.editReply({

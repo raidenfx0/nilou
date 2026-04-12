@@ -82,12 +82,21 @@ export function getCharacterName(avatarId) {
 }
 
 export function calcCV(reliquary) {
-  if (!reliquary?.flat?.reliquarySubstats) return 0;
+  if (!reliquary?.flat) return 0;
   let cr = 0, cd = 0;
-  for (const sub of reliquary.flat.reliquarySubstats) {
+  for (const sub of (reliquary.flat.reliquarySubstats || [])) {
     if (sub.appendPropId === "FIGHT_PROP_CRITICAL")      cr += sub.statValue;
     if (sub.appendPropId === "FIGHT_PROP_CRITICAL_HURT") cd += sub.statValue;
   }
+
+  const main = reliquary.flat.reliquaryMainstat;
+  if (main?.mainPropId === "FIGHT_PROP_CRITICAL") {
+    cr += main.statValue;
+  }
+  if (main?.mainPropId === "FIGHT_PROP_CRITICAL_HURT") {
+    cd += main.statValue;
+  }
+
   return parseFloat(((cr * 2) + cd).toFixed(1));
 }
 
