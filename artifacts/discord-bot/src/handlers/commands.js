@@ -24,6 +24,10 @@ import * as listCmd         from "../commands/list.js";
 import * as buildCmd        from "../commands/build.js";
 import * as cvCalcCmd       from "../commands/cv_calc.js";
 import * as topArtifactsCmd from "../commands/top_artifacts.js";
+import * as banCmd          from "../commands/ban.js";
+import * as kickCmd         from "../commands/kick.js";
+import * as timeoutCmd      from "../commands/timeout.js";
+import * as roleCmd         from "../commands/role.js"; // Import the new role command
 
 export function loadCommands(client) {
   client.commands = new Collection();
@@ -33,11 +37,15 @@ export function loadCommands(client) {
     ghostpingCmd, reactionroleCmd, adminroleCmd, pingCmd, botinfoCmd,
     serverinfoCmd, countdownCmd, helpCmd, afkCmd, ticketCmd,
     giveawayCmd, triggerCmd, nilouCmd,
-    registerCmd, aboutCmd, profileCmd, listCmd, buildCmd, cvCalcCmd, topArtifactsCmd,
+    registerCmd, aboutCmd, profileCmd, listCmd, buildCmd, cvCalcCmd, 
+    topArtifactsCmd, banCmd, kickCmd, timeoutCmd, 
+    roleCmd, // Add the role command to the array
   ];
 
   for (const cmd of commands) {
-    client.commands.set(cmd.data.name, cmd);
+    if (cmd.data && cmd.data.name) {
+      client.commands.set(cmd.data.name, cmd);
+    }
   }
 
   return client.commands;

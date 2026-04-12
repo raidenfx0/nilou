@@ -2,7 +2,8 @@ import { SlashCommandBuilder, EmbedBuilder } from "discord.js";
 import { NILOU_RED, FOOTER_MAIN, DIVIDER } from "../theme.js";
 import { afkUsers } from "../data/store.js";
 
-export const data = new SlashCommandBuilder()
+// Define the data object
+const data = new SlashCommandBuilder()
   .setName("afk")
   .setDescription("Set or clear your AFK status")
   .addSubcommand((sub) =>
@@ -17,13 +18,19 @@ export const data = new SlashCommandBuilder()
     sub.setName("clear").setDescription("Remove your AFK status")
   );
 
-export async function execute(interaction) {
-  const sub    = interaction.options.getSubcommand();
-  const key    = `${interaction.guildId}:${interaction.user.id}`;
+// Define the execute function
+async function execute(interaction) {
+  const sub = interaction.options.getSubcommand();
+  const key = `${interaction.guildId}:${interaction.user.id}`;
   const reason = interaction.options.getString("reason") || "No reason given";
 
   if (sub === "set") {
-    afkUsers.set(key, { reason, since: Date.now(), userId: interaction.user.id, guildId: interaction.guildId });
+    afkUsers.set(key, { 
+      reason, 
+      since: Date.now(), 
+      userId: interaction.user.id, 
+      guildId: interaction.guildId 
+    });
 
     const embed = new EmbedBuilder()
       .setColor(NILOU_RED)
@@ -54,3 +61,9 @@ export async function execute(interaction) {
     await interaction.reply({ embeds: [embed], ephemeral: true });
   }
 }
+
+// Named exports for loaders that destructure
+export { data, execute };
+
+// Default export for loaders that import the whole object
+export default { data, execute };
