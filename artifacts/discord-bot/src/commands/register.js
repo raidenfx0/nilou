@@ -15,10 +15,10 @@ export const data = new SlashCommandBuilder()
   .setDescription("Link your Genshin Impact UID.")
   .addIntegerOption(o =>
     o.setName("uid")
-      .setDescription("Your 9-digit Genshin Impact UID")
+      .setDescription("Your 9 or 10 digit Genshin Impact UID")
       .setRequired(true)
       .setMinValue(100000000)
-      .setMaxValue(999999999)
+      .setMaxValue(9999999999)
   );
 
 export async function execute(interaction) {
