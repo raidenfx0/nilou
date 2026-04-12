@@ -194,7 +194,7 @@ function iconName(avatarId) {
     10000069: "UI_AvatarIcon_Nilou",
     10000088: "UI_AvatarIcon_Furina",
     10000086: "UI_AvatarIcon_Neuvillette",
-    10000095: "UI_AvatarIcon_Alhatham",
+    10000095: "UI_AvatarIcon_Arlecchino",
   };
   return MAP[avatarId] || `UI_AvatarIcon_${avatarId}`;
 }

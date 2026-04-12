@@ -32,7 +32,7 @@ export async function execute(interaction) {
   catch (err) { return interaction.editReply({ content: `❌ ${err.message}` }); }
 
   const p          = parsePlayerInfo(raw);
-  const characters = parseCharacters(raw);
+  const characters = await parseCharacters(raw);
 
   if (characters.length === 0) {
     return interaction.editReply({
@@ -41,24 +41,38 @@ export async function execute(interaction) {
   }
 
   const allArtifacts = characters.flatMap(c => c.artifacts);
-  const byType = {};
+  const bestByType = {};
   for (const art of allArtifacts) {
-    if (!byType[art.type] || art.cv > byType[art.type].cv) {
-      byType[art.type] = art;
+    if (!bestByType[art.equipType] || art.cv > bestByType[art.equipType].cv) {
+      bestByType[art.equipType] = art;
     }
   }
 
-  const sorted = Object.values(byType).sort((a, b) => b.cv - a.cv);
+  const slotOrder = [
+    { equipType: "EQUIP_BRACER", label: "🥇 Best Flower" },
+    { equipType: "EQUIP_NECKLACE", label: "🥇 Best Feather" },
+    { equipType: "EQUIP_SHOES", label: "🥇 Best Sands" },
+    { equipType: "EQUIP_RING", label: "🥇 Best Goblet" },
+    { equipType: "EQUIP_DRESS", label: "🥇 Best Circlet" },
+  ];
+
+  const slotWinners = slotOrder
+    .map(slot => ({ ...slot, art: bestByType[slot.equipType] }))
+    .filter(slot => Boolean(slot.art));
 
   const overallBest = [...allArtifacts].sort((a, b) => b.cv - a.cv).slice(0, 3);
 
-  const fieldLines = sorted.map(art => {
+  const fieldLines = slotWinners.map(slot => {
+    const art = slot.art;
     const mainName = STAT_NAMES[art.mainStat?.key] || art.mainStat?.key || "?";
     const crSub    = art.subStats.find(s => s.key === "FIGHT_PROP_CRITICAL");
     const cdSub    = art.subStats.find(s => s.key === "FIGHT_PROP_CRITICAL_HURT");
     const cr       = crSub?.value.toFixed(1) || "0.0";
     const cd       = cdSub?.value.toFixed(1) || "0.0";
-    return `${art.type} — **${art.cv} CV** ${rateCV(art.cv)}\nMain: ${mainName} · CR ${cr}% + CD ${cd}% · On: *${art.characterName}*`;
+    return {
+      label: slot.label,
+      value: `${art.type} — **${art.cv} CV** ${rateCV(art.cv)}\nMain: ${mainName} · CR ${cr}% + CD ${cd}% · On: *${art.characterName}*`,
+    };
   });
 
   const totalCV = allArtifacts.reduce((s, a) => s + a.cv, 0);
@@ -74,9 +88,9 @@ export async function execute(interaction) {
       `${DIVIDER}`
     )
     .addFields(
-      ...fieldLines.map((l, i) => ({
-        name: ["🥇 Best Flower","🥇 Best Feather","🥇 Best Sands","🥇 Best Goblet","🥇 Best Circlet"][i] || sorted[i]?.type || `Slot ${i+1}`,
-        value: l,
+      ...fieldLines.map((field) => ({
+        name: field.label,
+        value: field.value,
         inline: false,
       })),
       {

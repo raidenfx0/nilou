@@ -1,7 +1,29 @@
-import { getCharacterName, calcCV, EQUIP_TYPE_NAMES, FIGHT_PROP_KEYS } from "./genshinData.js";
+import { calcCV, EQUIP_TYPE_NAMES, FIGHT_PROP_KEYS } from "./genshinData.js";
 
 const BASE_URL = "https://enka.network/api/uid";
 const HEADERS  = { "User-Agent": "NilouBot/1.0 (Discord Bot)" };
+const YATTA_API_BASE = "https://gi.yatta.moe/api/v2/en/avatar";
+const characterNameCache = new Map();
+
+async function resolveCharacterName(avatarId) {
+  const fallback = `Character #${avatarId}`;
+  if (characterNameCache.has(avatarId)) {
+    return characterNameCache.get(avatarId);
+  }
+
+  try {
+    const res = await fetch(`${YATTA_API_BASE}/${avatarId}`, { headers: HEADERS });
+    if (!res.ok) throw new Error(`Avatar name lookup failed: ${res.status}`);
+
+    const data = await res.json();
+    const resolved = data?.data?.name || fallback;
+    characterNameCache.set(avatarId, resolved);
+    return resolved;
+  } catch {
+    characterNameCache.set(avatarId, fallback);
+    return fallback;
+  }
+}
 
 export async function fetchProfile(uid) {
   const res = await fetch(`${BASE_URL}/${uid}`, { headers: HEADERS });
@@ -33,12 +55,12 @@ export function parsePlayerInfo(data) {
   };
 }
 
-export function parseCharacters(data) {
+export async function parseCharacters(data) {
   if (!data.avatarInfoList) return [];
-  return data.avatarInfoList.map(avatar => {
+  return Promise.all(data.avatarInfoList.map(async avatar => {
     const level   = avatar.propMap?.["4001"]?.val || "?";
     const fightProp = avatar.fightPropMap || {};
-    const name    = getCharacterName(avatar.avatarId);
+    const name    = await resolveCharacterName(avatar.avatarId);
 
     const artifacts = (avatar.equipList || [])
       .filter(e => e.flat?.itemType === "ITEM_RELIQUARY")
@@ -64,11 +86,15 @@ export function parseCharacters(data) {
         };
       });
 
-    const totalCV = artifacts.reduce((sum, a) => sum + a.cv, 0);
+    const artifactCV = artifacts.reduce((sum, a) => sum + a.cv, 0);
 
     const weapon = (avatar.equipList || []).find(e => e.weapon);
     const weaponIcon = weapon?.flat?.icon || "";
     const weaponName = weapon?.flat?.nameTextMapHash || "";
+
+    const critRate = ((fightProp[20] || 0) * 100);
+    const critDmg  = ((fightProp[22] || 0) * 100);
+    const statsCV  = (critRate * 2) + critDmg;
 
     return {
       avatarId:   avatar.avatarId,
@@ -80,11 +106,12 @@ export function parseCharacters(data) {
       def:        fightProp[2002] || fightProp[7] || 0,
       em:         fightProp[28]  || 0,
       er:         ((fightProp[23] || 1) * 100).toFixed(1),
-      critRate:   (fightProp[20] || 0).toFixed(1),
-      critDmg:    (fightProp[22] || 0).toFixed(1),
-      totalCV:    parseFloat(totalCV.toFixed(1)),
+      critRate:   critRate.toFixed(1),
+      critDmg:    critDmg.toFixed(1),
+      totalCV:    parseFloat(artifactCV.toFixed(1)),
+      statsCV:    parseFloat(statsCV.toFixed(1)),
       artifacts,
       weaponIcon,
     };
-  });
+  }));
 }
