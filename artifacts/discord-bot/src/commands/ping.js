@@ -6,11 +6,12 @@ export const data = new SlashCommandBuilder()
   .setDescription("Check Nilou's heartbeat and latency");
 
 export async function execute(interaction) {
-  // Swapped to withResponse to stop the Render console warnings
-  const sent = await interaction.deferReply({ withResponse: true });
+  // Use withResponse: true for modern compatibility
+  const response = await interaction.deferReply({ withResponse: true });
 
+  // Access the message timestamp from the response resource
   const botLatency = interaction.client.ws.ping;
-  const apiLatency = sent.createdTimestamp - interaction.createdTimestamp;
+  const apiLatency = response.resource.message.createdTimestamp - interaction.createdTimestamp;
 
   const latencyBar = (ms) => {
     if (ms < 100) return "🟢 Excellent";
