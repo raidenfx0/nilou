@@ -80,6 +80,15 @@ waitForPort = 8081
 PORT = "8081"
 BASE_PATH = "/__mockup"
 
+[[workflows.workflow]]
+name = "artifacts/api-server: API Server new"
+mode = "sequential"
+author = 57426929
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "PORT=3001 pnpm --filter @workspace/api-server run dev"
+
 [agent]
 stack = "PNPM_WORKSPACE"
 expertMode = true
@@ -91,6 +100,10 @@ timeoutMs = 20000
 [[ports]]
 localPort = 3000
 externalPort = 3002
+
+[[ports]]
+localPort = 3001
+externalPort = 6000
 
 [[ports]]
 localPort = 4001
