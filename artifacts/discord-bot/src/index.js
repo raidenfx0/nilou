@@ -10,6 +10,7 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Keep-alive server is running on port ${PORT}`);
 });
+
 import {
   Client,
   GatewayIntentBits,
@@ -62,17 +63,6 @@ loadEvents(client);
 
 const rest = new REST().setToken(TOKEN);
 
-async function registerCommandsToGuild(guildId, appId, commandsJson) {
-  try {
-    await rest.put(Routes.applicationGuildCommands(appId, guildId), {
-      body: commandsJson,
-    });
-    console.log(`✅ Commands registered to guild ${guildId}`);
-  } catch (err) {
-    console.error(`❌ Failed to register to guild ${guildId}:`, err.message);
-  }
-}
-
 client.once(Events.ClientReady, async (readyClient) => {
   console.log(`✅ Logged in as ${readyClient.user.tag}`);
 
@@ -82,28 +72,32 @@ client.once(Events.ClientReady, async (readyClient) => {
   const appId = readyClient.user.id;
 
   try {
-    await rest.put(Routes.applicationCommands(appId), { body: [] });
-    console.log(`🧹 Cleared global commands`);
-  } catch (err) {
-    console.error("❌ Failed to clear global commands:", err.message);
-  }
+    // 1. Register commands GLOBALLY (This is the correct way for multi-server bots)
+    console.log(`🔄 Registering ${commandsJson.length} commands globally...`);
+    await rest.put(Routes.applicationCommands(appId), { body: commandsJson });
+    console.log(`✅ Global commands registered!`);
 
-  const guilds = readyClient.guilds.cache;
-  console.log(
-    `🔄 Registering ${commandsJson.length} commands to ${guilds.size} server(s)...`,
-  );
-  for (const [guildId] of guilds) {
-    await registerCommandsToGuild(guildId, appId, commandsJson);
+    // 2. CLEANUP: Loop through all guilds and wipe guild-specific commands to fix duplicates
+    const guilds = readyClient.guilds.cache;
+    for (const [guildId, guild] of guilds) {
+      try {
+        const guildCmds = await guild.commands.fetch();
+        if (guildCmds.size > 0) {
+          await rest.put(Routes.applicationGuildCommands(appId, guildId), { body: [] });
+          console.log(`🧹 Cleared duplicate guild commands for: ${guild.name}`);
+        }
+      } catch (err) {
+        // Silently skip if we don't have permission in a specific guild
+      }
+    }
+  } catch (err) {
+    console.error("❌ Failed to sync commands:", err.message);
   }
-  console.log(`✅ All guild commands registered!`);
 });
 
+// Removed the guild.commands.set from here to prevent future duplicates
 client.on(Events.GuildCreate, async (guild) => {
-  const commandsJson = [...client.commands.values()].map((cmd) =>
-    cmd.data.toJSON(),
-  );
-  console.log(`🌸 Joined new server: ${guild.name}`);
-  await registerCommandsToGuild(guild.id, client.user.id, commandsJson);
+  console.log(`🌸 Joined new server: ${guild.name}. Using global commands.`);
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {

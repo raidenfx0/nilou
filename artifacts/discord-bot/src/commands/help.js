@@ -12,62 +12,58 @@ export async function execute(interaction) {
     .setDescription(`${DIVIDER}\nHere are all the things I can do for you! 🌸\n${DIVIDER}`)
     .addFields(
       {
-        name: "🌷 General",
+        name: "🌷 General & Info",
         value: [
-          "`/ping` — Check bot latency",
-          "`/botinfo` — About Nilou bot",
-          "`/serverinfo` — Server statistics",
-          "`/help` — This menu",
+          "`/about` — Information about Nilou",
+          "`/botinfo` — Detailed bot statistics",
+          "`/echo` — Send a message anonymously",
+          "`/help` — Show this menu",
+          "`/nilou` — Get a random beautiful image of Nilou",
+          "`/ping` — Check connection latency",
+          "`/serverinfo` — View server details",
         ].join("\n"),
       },
       {
-        name: "⏰ Timestamps & Embeds",
+        name: "⚔️ Moderation",
         value: [
-          "`/timestamp` — Generate a dynamic Discord timestamp",
-          "`/embed` — Send a styled embed message",
-          "`/countdown` — Countdown to the Subzeruz Festival",
+          "`/ban` — Ban a member",
+          "`/kick` — Kick a member",
+          "`/purge` — Bulk delete messages",
+          "`/timeout` — Mute a member",
         ].join("\n"),
       },
       {
-        name: "💤 AFK",
+        name: "🎭 Profiles & Genshin",
         value: [
-          "`/afk set [reason]` — Set your AFK status",
-          "`/afk clear` — Remove your AFK status",
+          "`/build` — Character build suggestions",
+          "`/cv_calc` — Calculate artifact Crit Value",
+          "`/list` — List registered users",
+          "`/profile` — View user profile",
+          "`/register` — Register your account",
+          "`/top_artifacts` — View best artifacts",
         ].join("\n"),
       },
       {
-        name: "🎟️ Tickets",
+        name: "🎟️ Management & Utility",
         value: [
-          "`/ticket open [type] [reason]` — Open a support ticket",
-          "`/ticket close` — Close the current ticket",
-          "`/ticket add @user` — Add a user to the ticket",
-          "`/ticket remove @user` — Remove a user from the ticket",
-          "`/ticket setup` — Configure ticket categories (admin)",
+          "`/adminrole` — Set admin permissions",
+          "`/afk` — Manage AFK status",
+          "`/countdown` — Event timers",
+          "`/embed` — Create custom embeds",
+          "`/giveaway` — Manage giveaways",
+          "`/role` — Manage member roles",
+          "`/sticky` — Create sticky messages",
+          "`/ticket` — Support system",
+          "`/timestamp` — Create Discord timestamps",
+          "`/trigger` — Auto-response system",
+          "`/welcome` — Join/Leave settings",
         ].join("\n"),
       },
       {
-        name: "🌺 Roles & Reactions",
+        name: "🔮 Security & Roles",
         value: [
-          "`/reactionrole` — Set up reaction roles (admin)",
-        ].join("\n"),
-      },
-      {
-        name: "📌 Messages",
-        value: [
-          "`/sticky` — Pin a sticky message in a channel (admin)",
-        ].join("\n"),
-      },
-      {
-        name: "👋 Welcome",
-        value: [
-          "`/welcome` — Configure welcome messages (admin)",
-        ].join("\n"),
-      },
-      {
-        name: "🔮 Other",
-        value: [
-          "`/ghostping` — Enable ghost ping detection (admin)",
-          "`/adminrole` — Set the bot admin role (admin)",
+          "`/ghostping` — Toggle ghost ping detection",
+          "`/reactionrole` — Reaction-based role assignment",
         ].join("\n"),
       },
     )
