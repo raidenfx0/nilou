@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, EmbedBuilder, MessageFlags } from "discord.js";
+import { SlashCommandBuilder, EmbedBuilder } from "discord.js";
 import { NILOU_RED, FOOTER_MAIN } from "../theme.js";
 
 export const data = new SlashCommandBuilder()
@@ -6,13 +6,12 @@ export const data = new SlashCommandBuilder()
   .setDescription("Check Nilou's heartbeat and latency");
 
 export async function execute(interaction) {
-  // 1. Using modern 'withResponse' to fix the Render warning and India lag
-  const response = await interaction.deferReply({ withResponse: true });
+  // Swapped to withResponse to stop the Render console warnings
+  const sent = await interaction.deferReply({ withResponse: true });
 
   const botLatency = interaction.client.ws.ping;
-  const apiLatency = response.createdTimestamp - interaction.createdTimestamp;
+  const apiLatency = sent.createdTimestamp - interaction.createdTimestamp;
 
-  // Your beautiful latency bar logic from the old version
   const latencyBar = (ms) => {
     if (ms < 100) return "🟢 Excellent";
     if (ms < 200) return "🟡 Good";
@@ -44,6 +43,5 @@ export async function execute(interaction) {
     .setFooter(FOOTER_MAIN)
     .setTimestamp();
 
-  // 2. Edit the reply with the pretty embed
   await interaction.editReply({ embeds: [embed] });
 }
