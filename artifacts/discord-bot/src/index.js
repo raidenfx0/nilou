@@ -7,6 +7,7 @@ import {
   Routes,
   Events,
   EmbedBuilder,
+  MessageFlags, // Added for modern ephemeral handling
 } from "discord.js";
 import { loadCommands } from "./handlers/commands.js";
 import { loadEvents } from "./handlers/events.js";
@@ -30,7 +31,7 @@ import { openTicket, closeTicket, closeEmbed } from "./commands/ticket.js";
 
 // --- 1. ENVIRONMENT SETUP ---
 const TOKEN = process.env.DISCORD_BOT_TOKEN;
-const PORT = process.env.PORT || 10000; // Render provides this
+const PORT = process.env.PORT || 10000;
 
 if (!TOKEN) {
   console.error("❌ DISCORD_BOT_TOKEN is not set.");
@@ -54,11 +55,10 @@ loadEvents(client);
 
 const rest = new REST().setToken(TOKEN);
 
-// --- 3. UNIFIED EXPRESS SERVER (Keep-alive + API) ---
+// --- 3. UNIFIED EXPRESS SERVER ---
 const app = express();
 app.use(express.json());
 
-// CORS Middleware
 app.use((req, res, next) => {
   res.header("Access-Control-Allow-Origin", "*");
   res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
@@ -67,12 +67,10 @@ app.use((req, res, next) => {
   next();
 });
 
-// Root route for Render Health Check
 app.get("/", (req, res) => {
   res.send("🌸 Nilou Bot is blooming and running!");
 });
 
-// Stats API
 app.get("/api/stats", (req, res) => {
   const uptime = Date.now() - botStats.startTime;
   const h = Math.floor(uptime / 3600000);
@@ -87,13 +85,8 @@ app.get("/api/stats", (req, res) => {
   });
 });
 
-// Other API Routes
 app.get("/api/tickets", (req, res) => res.json([...tickets.values()]));
-app.get("/api/guilds", (req, res) => {
-  res.json(client.guilds.cache.map(g => ({ id: g.id, name: g.name, memberCount: g.memberCount, icon: g.iconURL() })));
-});
 
-// POST: Send Embed
 app.post("/api/send-embed", async (req, res) => {
   const { channelId, title, description, color, footer, image, thumbnail } = req.body;
   if (!channelId || !title || !description) return res.status(400).json({ error: "Missing fields" });
@@ -118,7 +111,6 @@ app.post("/api/send-embed", async (req, res) => {
   }
 });
 
-// Start the unified server
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`🌐 Unified Server (Keep-alive + API) running on port ${PORT}`);
 });
@@ -134,15 +126,14 @@ client.once(Events.ClientReady, async (readyClient) => {
     console.log(`🔄 Syncing ${commandsJson.length} global commands...`);
     await rest.put(Routes.applicationCommands(appId), { body: commandsJson });
 
-    // Cleanup Guild Commands to prevent "Double Commands"
     for (const [guildId, guild] of readyClient.guilds.cache) {
       try {
         const guildCmds = await guild.commands.fetch();
         if (guildCmds.size > 0) {
           await rest.put(Routes.applicationGuildCommands(appId, guildId), { body: [] });
-          console.log(`🧹 Cleaned duplicates in: ${guild.name}`);
+          console.log(`Sweep: Cleared guild commands for ${guild.name}`);
         }
-      } catch (err) { /* Skip if no permission */ }
+      } catch (err) { /* Permission skip */ }
     }
     console.log(`✅ Command Sync Complete!`);
   } catch (err) {
@@ -151,7 +142,6 @@ client.once(Events.ClientReady, async (readyClient) => {
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
-  // Autocomplete Handling
   if (interaction.isAutocomplete()) {
     const command = client.commands.get(interaction.commandName);
     if (command?.autocomplete) {
@@ -160,7 +150,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
     return;
   }
 
-  // Slash Command Handling
   if (interaction.isChatInputCommand()) {
     const command = client.commands.get(interaction.commandName);
     if (!command) return;
@@ -168,20 +157,23 @@ client.on(Events.InteractionCreate, async (interaction) => {
       await command.execute(interaction);
     } catch (err) {
       console.error(`❌ Error in /${interaction.commandName}:`, err);
-      const errPayload = { content: "❌ Something went wrong with this command.", ephemeral: true };
+      const errPayload = { 
+        content: "❌ Something went wrong with this command.", 
+        flags: MessageFlags.Ephemeral // Modern way
+      };
       if (interaction.replied || interaction.deferred) await interaction.followUp(errPayload).catch(() => {});
       else await interaction.reply(errPayload).catch(() => {});
     }
   }
 
-  // Button Handling
   if (interaction.isButton()) {
     const id = interaction.customId;
 
-    // Ticket Buttons
     if (["btn_support", "btn_appeal", "btn_partnership"].includes(id)) {
       const type = id.replace("btn_", "").charAt(0).toUpperCase() + id.replace("btn_", "").slice(1);
-      await interaction.deferReply({ ephemeral: true });
+
+      // Fix: Added flags and withResponse
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral, withResponse: true });
 
       const result = await openTicket({
         guild: interaction.guild,
@@ -194,14 +186,16 @@ client.on(Events.InteractionCreate, async (interaction) => {
       else await interaction.editReply({ content: `🌸 Your **${type}** ticket: ${result.channel}!` });
     }
 
-    // Close Ticket
     if (id === "close_ticket" || id.startsWith("ticket_close:")) {
       const ticketId = `${interaction.guildId}:${interaction.channelId}`;
       const ticket = tickets.get(ticketId);
 
-      if (!ticket || !ticket.open) return interaction.reply({ content: "❌ Already closed.", ephemeral: true });
+      if (!ticket || !ticket.open) {
+        return interaction.reply({ content: "❌ Already closed.", flags: MessageFlags.Ephemeral });
+      }
+
       if (ticket.userId !== interaction.user.id && !isAdmin(interaction.member)) {
-        return interaction.reply({ content: "❌ No permission.", ephemeral: true });
+        return interaction.reply({ content: "❌ No permission.", flags: MessageFlags.Ephemeral });
       }
 
       await interaction.reply({ embeds: [closeEmbed(interaction.user)] });
