@@ -202,7 +202,7 @@ export async function execute(interaction) {
     if (subcommand === 'about') {
         const aboutEmbed = new EmbedBuilder()
             .setTitle('📖 About Emoji Hunt')
-            .setColor(NILOU_RED)
+            .setColor(0xE84056)
             .setDescription(
                 "Welcome to the **Extreme Scavenger Hunt**! I'm thinking of a specific emoji, and it's your job to find it."
             )
@@ -221,7 +221,7 @@ export async function execute(interaction) {
         const stats = userStats.get(target.id) || { wins: 0, points: 0 };
         const embed = new EmbedBuilder()
             .setTitle(`📊 ${target.username}'s Scavenger Stats`)
-            .setColor(NILOU_RED)
+            .setColor(0xE84056)
             .addFields(
                 { name: 'Wins', value: `${stats.wins}`, inline: true },
                 { name: 'Points', value: `${stats.points}`, inline: true }
@@ -316,7 +316,7 @@ export async function execute(interaction) {
                     .setTitle("🏆 Winner Found!")
                     .setDescription(`${m.author} caught ${game.emoji} (**${game.name}**)`)
                     .addFields({ name: "Reward", value: `+${finalPoints} points` })
-                    .setColor(NILOU_RED);
+                    .setColor(0xE84056);
 
                 await m.channel.send({ embeds: [winEmbed] });
 
