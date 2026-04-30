@@ -84,6 +84,12 @@ const Nodes = [
     url: "lava.horizxon.studio:80", 
     auth: "horizxon.studio",    
     secure: false,             
+  },
+  {
+    name: "devamop",
+    url: "lavalink.devamop.in:443",
+    auth: "DevamOP",
+    secure: true,
   }
 ];
 
