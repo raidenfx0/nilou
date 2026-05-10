@@ -36,6 +36,7 @@ import * as warnCmd          from "../commands/warn.js";
 import * as loggingCmd       from "../commands/logging.js";
 import * as economyCmd       from "../commands/economy.js";
 import * as gamblingCmd      from "../commands/gambling.js";
+import * as countingCmd      from "../commands/counting.js";
 
 export function loadCommands(client) {
   client.commands = new Collection();
@@ -48,7 +49,7 @@ export function loadCommands(client) {
     registerCmd, aboutCmd, profileCmd, listCmd, buildCmd, cvCalcCmd,
     topArtifactsCmd, banCmd, kickCmd, timeoutCmd,
     roleCmd, echoCmd, emojihuntCmd,
-    warnCmd, loggingCmd, economyCmd, gamblingCmd,
+    warnCmd, loggingCmd, economyCmd, gamblingCmd, countingCmd,
   ];
 
   for (const cmd of commands) {

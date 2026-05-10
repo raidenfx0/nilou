@@ -237,6 +237,62 @@ export async function getLeaderboard(guildId, field = "coins", limit = 10) {
   return r.rows;
 }
 
+// ─── Counting ─────────────────────────────────────────────────────────────────
+
+export async function getCountingConfig(guildId) {
+  const r = await pool.query("SELECT * FROM counting_config WHERE guild_id=$1", [guildId]);
+  return r.rows[0] || null;
+}
+
+export async function upsertCountingConfig(guildId, fields) {
+  const { channel_id, current_count, high_score, last_user_id, failed_at } = fields;
+  await pool.query(
+    `INSERT INTO counting_config (guild_id, channel_id, current_count, high_score, last_user_id, failed_at)
+     VALUES ($1,$2,$3,$4,$5,$6)
+     ON CONFLICT (guild_id) DO UPDATE SET
+       channel_id    = COALESCE($2, counting_config.channel_id),
+       current_count = COALESCE($3, counting_config.current_count),
+       high_score    = COALESCE($4, counting_config.high_score),
+       last_user_id  = COALESCE($5, counting_config.last_user_id),
+       failed_at     = COALESCE($6, counting_config.failed_at)`,
+    [guildId, channel_id ?? null, current_count ?? null, high_score ?? null, last_user_id ?? null, failed_at ?? null]
+  );
+}
+
+export async function getAllCountingConfigs() {
+  const r = await pool.query("SELECT * FROM counting_config");
+  return r.rows;
+}
+
+export async function getCountingSaves(guildId, userId) {
+  const r = await pool.query("SELECT * FROM counting_saves WHERE guild_id=$1 AND user_id=$2", [guildId, userId]);
+  return r.rows[0] || { guild_id: guildId, user_id: userId, saves: 0, last_daily_claim: 0 };
+}
+
+export async function upsertCountingSaves(guildId, userId, fields) {
+  const keys = Object.keys(fields);
+  const setClauses = keys.map((k, i) => `${k} = $${i + 3}`).join(", ");
+  await pool.query(
+    `INSERT INTO counting_saves (guild_id, user_id, ${keys.join(", ")})
+     VALUES ($1, $2, ${keys.map((_, i) => `$${i + 3}`).join(", ")})
+     ON CONFLICT (guild_id, user_id) DO UPDATE SET ${setClauses}`,
+    [guildId, userId, ...keys.map(k => fields[k])]
+  );
+}
+
+export async function getGuildSaves(guildId) {
+  const r = await pool.query("SELECT saves FROM counting_guild_saves WHERE guild_id=$1", [guildId]);
+  return r.rows[0]?.saves || 0;
+}
+
+export async function setGuildSaves(guildId, saves) {
+  await pool.query(
+    `INSERT INTO counting_guild_saves (guild_id, saves) VALUES ($1,$2)
+     ON CONFLICT (guild_id) DO UPDATE SET saves=$2`,
+    [guildId, saves]
+  );
+}
+
 // ─── UID Registrations ────────────────────────────────────────────────────────
 
 export async function registerUidDb(discordId, uid) {
@@ -254,7 +310,7 @@ export async function getUidDb(discordId) {
 // ─── Startup Hydration ────────────────────────────────────────────────────────
 
 export async function hydrateStore(store) {
-  const [afk, sticky, tix, giveaways, trigs, cds, settings] = await Promise.all([
+  const [afk, sticky, tix, giveaways, trigs, cds, settings, countingRows] = await Promise.all([
     getAllAfk(),
     getAllSticky(),
     getAllTickets(),
@@ -262,6 +318,7 @@ export async function hydrateStore(store) {
     getAllTriggers(),
     getAllCountdowns(),
     getAllGuildSettings(),
+    getAllCountingConfigs(),
   ]);
 
   for (const row of afk) {
@@ -288,12 +345,23 @@ export async function hydrateStore(store) {
   }
 
   for (const row of giveaways) {
+    const entrantList = JSON.parse(row.entrants || "[]");
     store.giveaways.set(row.message_id, {
       messageId: row.message_id, prize: row.prize,
       winnerCount: row.winner_count, endTime: Number(row.end_time),
       hostId: row.host_id, guildId: row.guild_id, channelId: row.channel_id,
       ended: row.ended, winners: JSON.parse(row.winners || "[]"),
-      entrants: JSON.parse(row.entrants || "[]"),
+      entrants: new Set(entrantList),
+    });
+  }
+
+  for (const row of countingRows) {
+    store.countingChannels.set(row.guild_id, {
+      channelId: row.channel_id,
+      currentCount: row.current_count,
+      highScore: row.high_score,
+      lastUserId: row.last_user_id,
+      failedAt: Number(row.failed_at),
     });
   }
 
@@ -332,5 +400,5 @@ export async function hydrateStore(store) {
     });
   }
 
-  console.log(`✅ DB hydrated — afk:${afk.length} sticky:${sticky.length} tickets:${tix.length} giveaways:${giveaways.length} triggers:${trigs.length}`);
+  console.log(`✅ DB hydrated — afk:${afk.length} sticky:${sticky.length} tickets:${tix.length} giveaways:${giveaways.length} triggers:${trigs.length} counting:${countingRows.length}`);
 }

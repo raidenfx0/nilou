@@ -14,9 +14,10 @@ interface Countdown { name:string; unixTs:number; description:string|null; pinne
 interface Sticky    { guildId:string; channelId:string; title:string|null; content:string; color:number; lastMessageId:string|null; }
 interface Warning   { id:number; guild_id:string; user_id:string; moderator_id:string; reason:string; points:number; active:boolean; created_at:string; }
 interface LoggingCfg { enabled:boolean; channelId:string|null; events:string[]; }
-interface EcoRow    { user_id:string; guild_id:string; coins:number; theater_credits:number; fame:number; exp:number; level:number; rank:string; }
+interface EcoRow     { user_id:string; guild_id:string; coins:number; theater_credits:number; fame:number; exp:number; level:number; rank:string; }
+interface CountingCfg { channelId:string; currentCount:number; highScore:number; lastUserId:string|null; failedAt:number; }
 
-type TabKey = "overview"|"embed"|"countdown"|"giveaways"|"triggers"|"guilds"|"tickets"|"afk"|"sticky"|"logging"|"warns"|"economy"|"commands";
+type TabKey = "overview"|"embed"|"countdown"|"giveaways"|"triggers"|"guilds"|"tickets"|"afk"|"sticky"|"logging"|"warns"|"economy"|"counting"|"commands";
 
 /* ─── Helpers ──────────────────────────────────────────────────────────── */
 function timeAgo(ms:number) {
@@ -96,13 +97,14 @@ export default function App() {
   const [cdMap,setCdMap]             = useState<Record<string,Countdown>>({});
   const [stickies,setStickies]       = useState<Sticky[]>([]);
   const [loggingMap,setLoggingMap]   = useState<Record<string,LoggingCfg>>({});
+  const [countingMap,setCountingMap] = useState<Record<string,CountingCfg>>({});
   const [loading,setLoading]         = useState(true);
   const [error,setError]             = useState<string|null>(null);
   const [lastRefresh,setLastRefresh] = useState<Date|null>(null);
 
   const fetchAll = useCallback(async()=>{
     try{
-      const [s,a,t,g,gw,tr,cd,st,lg]=await Promise.all([
+      const [s,a,t,g,gw,tr,cd,st,lg,ct]=await Promise.all([
         fetch(`${API}/stats`).then(r=>r.json()),
         fetch(`${API}/afk`).then(r=>r.json()),
         fetch(`${API}/tickets`).then(r=>r.json()),
@@ -112,6 +114,7 @@ export default function App() {
         fetch(`${API}/countdowns`).then(r=>r.json()),
         fetch(`${API}/stickies`).then(r=>r.json()),
         fetch(`${API}/logging`).then(r=>r.json()),
+        fetch(`${API}/counting`).then(r=>r.json()),
       ]);
       setStats(s); setAfk(a);
       setOpenTickets((t as Ticket[]).filter(x=>x.open));
@@ -119,6 +122,7 @@ export default function App() {
       setTriggerMap(tr); setCdMap(cd);
       setStickies(Array.isArray(st)?st:[]);
       setLoggingMap(lg||{});
+      setCountingMap(ct||{});
       setError(null); setLastRefresh(new Date());
     }catch{ setError("Could not reach the bot. Is it running?"); }
     finally{ setLoading(false); }
@@ -136,6 +140,7 @@ export default function App() {
     {key:"logging",   label:"Logging",     emoji:"📋"},
     {key:"warns",     label:"Warns",       emoji:"⚠️"},
     {key:"economy",   label:"Economy",     emoji:"💠"},
+    {key:"counting",  label:"Counting",    emoji:"🔢"},
     {key:"guilds",    label:"Guilds",      emoji:"🏰"},
     {key:"tickets",   label:"Tickets",     emoji:"🎟️"},
     {key:"afk",       label:"AFK",         emoji:"💤"},
@@ -189,6 +194,7 @@ export default function App() {
             {tab==="logging"   &&<LoggingTab guilds={guilds} loggingMap={loggingMap} onRefresh={fetchAll}/>}
             {tab==="warns"     &&<WarnsTab guilds={guilds}/>}
             {tab==="economy"   &&<EconomyTab guilds={guilds}/>}
+            {tab==="counting"  &&<CountingTab guilds={guilds} countingMap={countingMap}/>}
             {tab==="guilds"    &&<GuildsTab guilds={guilds}/>}
             {tab==="tickets"   &&<TicketsTab openTickets={openTickets}/>}
             {tab==="afk"       &&<AfkTab afk={afk}/>}
@@ -841,6 +847,86 @@ function AfkTab({afk}:{afk:AfkUser[]}) {
           </div>
         ))}</div>
       )}
+    </div>
+  );
+}
+
+/* ─── Counting ─────────────────────────────────────────────────────────── */
+function CountingTab({guilds,countingMap}:{guilds:Guild[];countingMap:Record<string,CountingCfg>}) {
+  const guildName=(id:string)=>guilds.find(g=>g.id===id)?.name||id;
+  const entries=Object.entries(countingMap);
+  return (
+    <div className="space-y-6">
+      <h2 className="text-lg font-bold text-primary">🔢 Counting Channels</h2>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        {[
+          {icon:"📌",label:"Setup",info:"Use /counting set <channel> to designate a counting channel"},
+          {icon:"💾",label:"Daily Saves",info:"Members get 1 free save per day — use /counting save claim"},
+          {icon:"🎟️",label:"Buy Extra",info:"Spend 50 Theater Credits with /counting save buy (max 5 saves)"},
+        ].map(({icon,label,info})=>(
+          <div key={label} className="rounded-xl border border-rose-900/40 bg-card p-3">
+            <p className="font-semibold text-foreground text-xs">{icon} {label}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{info}</p>
+          </div>
+        ))}
+      </div>
+      {entries.length===0?(
+        <div className="rounded-xl border border-rose-900/40 bg-card p-8 text-center text-muted-foreground">
+          <div className="text-4xl mb-3">🔢</div>
+          <p>No counting channels set up yet.</p>
+          <p className="text-sm mt-1">Use <code className="text-primary">/counting set</code> in Discord to start.</p>
+        </div>
+      ):(
+        <div className="space-y-4">
+          {entries.map(([guildId,cfg])=>{
+            const progress=cfg.highScore>0?Math.min(100,Math.round((cfg.currentCount/cfg.highScore)*100)):0;
+            return(
+              <div key={guildId} className="rounded-xl border border-rose-900/40 bg-card p-5">
+                <div className="flex items-start justify-between gap-3 mb-4">
+                  <div>
+                    <h3 className="font-bold text-foreground">{guildName(guildId)}</h3>
+                    <p className="text-xs text-muted-foreground mt-0.5">Channel: <span className="font-mono">#{cfg.channelId}</span></p>
+                  </div>
+                  {cfg.failedAt>0&&<span className="text-xs px-2 py-1 rounded-full border bg-red-950/30 text-red-300 border-red-800/40 shrink-0">❌ Failed at {cfg.failedAt}</span>}
+                </div>
+                <div className="grid grid-cols-3 gap-4 mb-4 text-center">
+                  <div><p className="text-3xl font-bold text-primary font-mono">{cfg.currentCount}</p><p className="text-xs text-muted-foreground mt-0.5">Current Count</p></div>
+                  <div><p className="text-3xl font-bold text-yellow-400 font-mono">{cfg.highScore}</p><p className="text-xs text-muted-foreground mt-0.5">High Score 🏆</p></div>
+                  <div><p className="text-xs font-mono text-foreground truncate">{cfg.lastUserId||"—"}</p><p className="text-xs text-muted-foreground mt-0.5">Last Counter</p></div>
+                </div>
+                {cfg.highScore>0&&(
+                  <div>
+                    <div className="flex justify-between text-xs text-muted-foreground mb-1"><span>Progress to High Score</span><span>{progress}%</span></div>
+                    <div className="h-2 rounded-full bg-black/30 overflow-hidden">
+                      <div className="h-full rounded-full bg-gradient-to-r from-rose-600 to-primary transition-all" style={{width:`${progress}%`}}/>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+      <div className="rounded-xl border border-rose-900/40 bg-card p-5">
+        <h3 className="font-semibold text-primary mb-3">📖 Command Reference</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+          {[
+            {cmd:"/counting set <channel>",desc:"Admin: designate the counting channel"},
+            {cmd:"/counting info",desc:"View current count, high score, guild saves"},
+            {cmd:"/counting save claim",desc:"Claim your free daily save (resets every 24h)"},
+            {cmd:"/counting save use",desc:"Use a personal save to restore count after a fail"},
+            {cmd:"/counting save buy",desc:"Buy an extra save for 50 🎟️ Theater Credits"},
+            {cmd:"/counting save status",desc:"Check your saves and daily claim timer"},
+            {cmd:"/counting donate <n>",desc:"Donate saves to the guild shared pool"},
+            {cmd:"/counting guild-save",desc:"Use a save from the guild pool"},
+          ].map(({cmd,desc})=>(
+            <div key={cmd} className="flex items-start gap-2">
+              <code className="text-primary bg-rose-950/40 border border-rose-900/30 px-1.5 py-0.5 rounded shrink-0">{cmd}</code>
+              <span className="text-muted-foreground">{desc}</span>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

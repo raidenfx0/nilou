@@ -39,11 +39,13 @@ import {
   countdowns,
   pinnedCountdowns,
   loggingConfig,
+  countingChannels,
 } from "./data/store.js";
 import { NILOU_RED, FOOTER_MAIN, DIVIDER } from "./theme.js";
 import { isAdmin } from "./utils/adminCheck.js";
 import { buildCountdownEmbed } from "./commands/countdown.js";
 import { openTicket, closeTicket, closeEmbed } from "./commands/ticket.js";
+import { handleGiveawayButton, restoreGiveawayTimers } from "./commands/giveaway.js";
 import {
   hydrateStore,
   upsertTrigger,
@@ -149,7 +151,7 @@ loadEvents(client);
 const store = {
   afkUsers, stickyMessages, tickets, ticketConfig, giveaways,
   triggers, countdowns, pinnedCountdowns, adminRoles, welcomeChannels,
-  loggingConfig,
+  loggingConfig, countingChannels,
 };
 
 // Hydrate all in-memory maps from PostgreSQL before login
@@ -159,6 +161,8 @@ const rest = new REST().setToken(TOKEN);
 
 client.once(Events.ClientReady, async (readyClient) => {
   console.log(`✅ Logged in as ${readyClient.user.tag}`);
+  // Restore giveaway timers after restart (so active giveaways auto-end on time)
+  restoreGiveawayTimers(readyClient);
   botStats.startTime = Date.now(); 
 
   const commandsJson = [...client.commands.values()].map((cmd) => cmd.data.toJSON());
@@ -248,6 +252,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
           content: `🌸 Your **${type}** ticket has been opened in ${result.channel}!`,
         });
       }
+      return;
+    }
+
+    if (id.startsWith("gw_enter:") || id.startsWith("gw_leave:")) {
+      await handleGiveawayButton(interaction);
       return;
     }
 
@@ -437,6 +446,15 @@ const server = createServer(async (req, res) => {
     if (url === "/api/logging") {
       const result = {};
       for (const [guildId, cfg] of loggingConfig) {
+        result[guildId] = cfg;
+      }
+      res.end(JSON.stringify(result));
+      return;
+    }
+
+    if (url === "/api/counting") {
+      const result = {};
+      for (const [guildId, cfg] of countingChannels) {
         result[guildId] = cfg;
       }
       res.end(JSON.stringify(result));
