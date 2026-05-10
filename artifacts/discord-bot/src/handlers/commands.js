@@ -13,7 +13,7 @@ import * as serverinfoCmd    from "../commands/serverinfo.js";
 import * as countdownCmd     from "../commands/countdown.js";
 import * as helpCmd          from "../commands/help.js";
 import * as musichelpCmd     from "../commands/musichelp.js";
-import * as musicCmd         from "../commands/music.js"; // Added core music commands
+import * as musicCmd         from "../commands/music.js";
 import * as afkCmd           from "../commands/afk.js";
 import * as ticketCmd        from "../commands/ticket.js";
 import * as giveawayCmd      from "../commands/giveaway.js";
@@ -29,27 +29,26 @@ import * as topArtifactsCmd  from "../commands/top_artifacts.js";
 import * as banCmd           from "../commands/ban.js";
 import * as kickCmd          from "../commands/kick.js";
 import * as timeoutCmd       from "../commands/timeout.js";
-import * as roleCmd          from "../commands/role.js"; 
+import * as roleCmd          from "../commands/role.js";
 import * as echoCmd          from "../commands/echo.js";
 import * as emojihuntCmd     from "../commands/emojihunt.js";
+import * as warnCmd          from "../commands/warn.js";
+import * as loggingCmd       from "../commands/logging.js";
+import * as economyCmd       from "../commands/economy.js";
+import * as gamblingCmd      from "../commands/gambling.js";
 
-/**
- * Loads all command modules into the client's command collection.
- * @param {Client} client - The Discord client instance.
- */
 export function loadCommands(client) {
   client.commands = new Collection();
 
   const commands = [
     embedCmd, timestampCmd, stickyCmd, purgeCmd, welcomeCmd,
     ghostpingCmd, reactionroleCmd, adminroleCmd, pingCmd, botinfoCmd,
-    serverinfoCmd, countdownCmd, helpCmd, musichelpCmd, musicCmd, 
+    serverinfoCmd, countdownCmd, helpCmd, musichelpCmd, musicCmd,
     afkCmd, ticketCmd, giveawayCmd, triggerCmd, nilouCmd,
-    registerCmd, aboutCmd, profileCmd, listCmd, buildCmd, cvCalcCmd, 
-    topArtifactsCmd, banCmd, kickCmd, timeoutCmd, 
-    roleCmd, 
-    echoCmd,
-    emojihuntCmd, 
+    registerCmd, aboutCmd, profileCmd, listCmd, buildCmd, cvCalcCmd,
+    topArtifactsCmd, banCmd, kickCmd, timeoutCmd,
+    roleCmd, echoCmd, emojihuntCmd,
+    warnCmd, loggingCmd, economyCmd, gamblingCmd,
   ];
 
   for (const cmd of commands) {

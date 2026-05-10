@@ -10,6 +10,7 @@ export const ticketConfig      = new Map();
 export const giveaways         = new Map();
 export const triggers          = new Map();
 export const pinnedCountdowns  = new Map();
+export const loggingConfig     = new Map();
 
 export const botStats = {
   startTime: Date.now(),

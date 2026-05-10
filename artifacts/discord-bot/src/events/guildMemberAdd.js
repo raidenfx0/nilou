@@ -1,7 +1,7 @@
 import { Events, EmbedBuilder } from "discord.js";
 import { welcomeChannels } from "../data/store.js";
-import { guildStore } from "../db/store.js";
 import { NILOU_RED, DIVIDER } from "../theme.js";
+import { sendLog } from "../utils/logger.js";
 
 export const name = Events.GuildMemberAdd;
 
@@ -69,4 +69,12 @@ export async function execute(member) {
   } catch (err) {
     console.error(`❌ Welcome Message Error:`, err.message);
   }
+
+  await sendLog(guild, "memberJoin", {
+    title: "📥 Member Joined",
+    description:
+      `**User:** ${user.tag} (<@${user.id}>)\n` +
+      `**Account Created:** <t:${Math.floor(user.createdTimestamp / 1000)}:R>\n` +
+      `**Members Now:** ${guild.memberCount}`,
+  });
 }

@@ -8,6 +8,7 @@
  */
 
 import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
+import { updateEconomy, getEconomy } from '../db/index.js';
 
 const activeGames = new Map();
 const userStats = new Map();
@@ -310,12 +311,28 @@ export async function execute(interaction) {
                 pStats.points += finalPoints;
                 userStats.set(m.author.id, pStats);
 
+                // Award Theater Credits from economy DB
+                const tcReward = Math.max(5, Math.floor(finalPoints / 2));
+                const coinsReward = finalPoints * 10;
+                try {
+                    const eco = await getEconomy(m.author.id, m.guildId);
+                    await updateEconomy(m.author.id, m.guildId, {
+                        theater_credits: Number(eco.theater_credits) + tcReward,
+                        coins: Number(eco.coins) + coinsReward,
+                        fame: Number(eco.fame) + 5,
+                    });
+                } catch {}
+
                 await m.react('🌸');
 
                 const winEmbed = new EmbedBuilder()
                     .setTitle("🏆 Winner Found!")
                     .setDescription(`${m.author} caught ${game.emoji} (**${game.name}**)`)
-                    .addFields({ name: "Reward", value: `+${finalPoints} points` })
+                    .addFields(
+                        { name: "Hunt Points", value: `+${finalPoints} pts`, inline: true },
+                        { name: "🎟️ Theater Credits", value: `+${tcReward} TC`, inline: true },
+                        { name: "💠 Coins", value: `+${coinsReward}`, inline: true },
+                    )
                     .setColor(0xE84056);
 
                 await m.channel.send({ embeds: [winEmbed] });

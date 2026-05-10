@@ -1,26 +1,28 @@
-import * as messageCreateEvent from "../events/messageCreate.js";
-import * as messageDeleteEvent from "../events/messageDelete.js";
-import * as guildMemberAddEvent from "../events/guildMemberAdd.js";
-import * as messageReactionAddEvent from "../events/messageReactionAdd.js";
+import * as messageCreateEvent       from "../events/messageCreate.js";
+import * as messageDeleteEvent       from "../events/messageDelete.js";
+import * as messageUpdateEvent       from "../events/messageUpdate.js";
+import * as guildMemberAddEvent      from "../events/guildMemberAdd.js";
+import * as guildMemberRemoveEvent   from "../events/guildMemberRemove.js";
+import * as guildBanAddEvent         from "../events/guildBanAdd.js";
+import * as guildBanRemoveEvent      from "../events/guildBanRemove.js";
+import * as messageReactionAddEvent  from "../events/messageReactionAdd.js";
 import * as messageReactionRemoveEvent from "../events/messageReactionRemove.js";
 
-/**
- * Loads and registers event handlers for the Discord client.
- * @param {import('discord.js').Client} client - The Discord client instance.
- */
 export function loadEvents(client) {
   const events = [
     messageCreateEvent,
     messageDeleteEvent,
+    messageUpdateEvent,
     guildMemberAddEvent,
+    guildMemberRemoveEvent,
+    guildBanAddEvent,
+    guildBanRemoveEvent,
     messageReactionAddEvent,
     messageReactionRemoveEvent,
   ];
 
   for (const event of events) {
-    // Create a handler that passes all arguments to the event's execute function
     const handler = (...args) => event.execute(...args);
-
     if (event.once) {
       client.once(event.name, handler);
     } else {

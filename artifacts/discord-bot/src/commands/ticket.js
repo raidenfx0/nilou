@@ -10,6 +10,8 @@ import {
 import { NILOU_RED, FOOTER_MAIN, DIVIDER } from "../theme.js";
 import { tickets, ticketConfig } from "../data/store.js";
 import { isAdmin, denyAdmin } from "../utils/adminCheck.js";
+import { upsertTicket, closeTicketDb, deleteTicketDb, upsertGuildSettings } from "../db/index.js";
+import { sendLog } from "../utils/logger.js";
 
 // ABSOLUTE LOCK: Prevents a user from starting any ticket process while one is active.
 const creationLock = new Set();
@@ -103,6 +105,13 @@ export async function execute(interaction) {
     });
 
     ticketConfig.set(interaction.guildId, existing);
+    await upsertGuildSettings(interaction.guildId, {
+      ticket_support_category:     existing.supportCategoryId     || null,
+      ticket_appeal_category:      existing.appealCategoryId      || null,
+      ticket_partnership_category: existing.partnershipCategoryId || null,
+      staff_role_id:               existing.staffRoleId           || null,
+      ticket_log_channel:          existing.logChannelId          || null,
+    });
 
     const setupEmbed = new EmbedBuilder()
       .setColor(NILOU_RED)
@@ -228,8 +237,15 @@ export async function openTicket({ guild, user, type, reason }) {
       topic: `${type} Ticket | User: ${user.tag}`
     });
 
-    // Save to memory
-    tickets.set(`${guild.id}:${channel.id}`, { guildId: guild.id, userId, channelId: channel.id, type, open: true });
+    // Save to memory + DB
+    const ticketData = {
+      id: `${guild.id}:${channel.id}`,
+      channelId: channel.id, guildId: guild.id,
+      userId, type, reason, open: true,
+      openedAt: Date.now(), members: [],
+    };
+    tickets.set(`${guild.id}:${channel.id}`, ticketData);
+    await upsertTicket(ticketData);
 
     const embed = new EmbedBuilder()
       .setColor(NILOU_RED)
@@ -256,13 +272,22 @@ export async function openTicket({ guild, user, type, reason }) {
 
 export async function closeTicket(channel, ticket, ticketId, user, guild) {
   try {
-    const config = ticketConfig.get(guild.id) || {};
     if (tickets.has(ticketId)) {
       const data = tickets.get(ticketId);
       data.open = false;
       tickets.set(ticketId, data);
     }
+    await closeTicketDb(ticketId);
 
+    await sendLog(guild, "ticket", {
+      title: "🎟️ Ticket Closed",
+      description:
+        `**User:** <@${ticket.userId}>\n` +
+        `**Type:** ${ticket.type}\n` +
+        `**Closed By:** ${user.tag}`,
+    });
+
+    const config = ticketConfig.get(guild.id) || {};
     if (config.logChannelId) {
       const logCh = await guild.channels.fetch(config.logChannelId).catch(() => null);
       if (logCh) {
@@ -276,12 +301,13 @@ export async function closeTicket(channel, ticket, ticketId, user, guild) {
     }
 
     setTimeout(async () => {
-      try { 
-        await channel.delete(); 
-        tickets.delete(ticketId); 
-      } catch (e) {}
+      try {
+        await channel.delete();
+        tickets.delete(ticketId);
+        await deleteTicketDb(ticketId);
+      } catch {}
     }, 5000);
-  } catch (err) {}
+  } catch {}
 }
 
 export function closeEmbed(user) {

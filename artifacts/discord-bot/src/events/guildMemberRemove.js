@@ -1,14 +1,16 @@
-import { Events } from 'discord.js';
+import { Events } from "discord.js";
+import { sendLog } from "../utils/logger.js";
 
 export const name = Events.GuildMemberRemove;
-export const once = false;
 
 export async function execute(member) {
-    const { guild, user } = member;
+  const { guild, user } = member;
 
-    // This is useful for logging when someone leaves
-    console.log(`✨ ${user.tag} has left ${guild.name}.`);
-
-    // You can add logic here later for "Goodbye" messages 
-    // or clearing user data if needed.
+  await sendLog(guild, "memberLeave", {
+    title: "📤 Member Left",
+    description:
+      `**User:** ${user.tag} (<@${user.id}>)\n` +
+      `**Account Created:** <t:${Math.floor(user.createdTimestamp / 1000)}:R>\n` +
+      `**Members Now:** ${guild.memberCount}`,
+  });
 }

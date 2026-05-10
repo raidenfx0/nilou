@@ -38,11 +38,21 @@ import {
   triggers,
   countdowns,
   pinnedCountdowns,
+  loggingConfig,
 } from "./data/store.js";
 import { NILOU_RED, FOOTER_MAIN, DIVIDER } from "./theme.js";
 import { isAdmin } from "./utils/adminCheck.js";
 import { buildCountdownEmbed } from "./commands/countdown.js";
 import { openTicket, closeTicket, closeEmbed } from "./commands/ticket.js";
+import {
+  hydrateStore,
+  upsertTrigger,
+  deleteTrigger,
+  getAllWarnings,
+  upsertGuildSettings,
+  getLeaderboard,
+  pool,
+} from "./db/index.js";
 
 const TOKEN = process.env.DISCORD_BOT_TOKEN;
 if (!TOKEN) {
@@ -135,6 +145,15 @@ client.manager.on("error", (name, error) => {
 // Load handlers
 loadCommands(client);
 loadEvents(client);
+
+const store = {
+  afkUsers, stickyMessages, tickets, ticketConfig, giveaways,
+  triggers, countdowns, pinnedCountdowns, adminRoles, welcomeChannels,
+  loggingConfig,
+};
+
+// Hydrate all in-memory maps from PostgreSQL before login
+hydrateStore(store).catch(err => console.error("❌ DB hydration failed:", err));
 
 const rest = new REST().setToken(TOKEN);
 
@@ -394,6 +413,45 @@ const server = createServer(async (req, res) => {
       res.end(JSON.stringify(settings));
       return;
     }
+
+    if (url === "/api/stickies") {
+      const list = [];
+      for (const [key, data] of stickyMessages) {
+        const [guildId, channelId] = key.split(":");
+        list.push({ guildId, channelId, ...data });
+      }
+      res.end(JSON.stringify(list));
+      return;
+    }
+
+    if (url?.startsWith("/api/warns/")) {
+      const guildId = url.split("/api/warns/")[1];
+      if (!guildId) { res.statusCode = 400; res.end(JSON.stringify({ error: "guildId required" })); return; }
+      try {
+        const warns = await getAllWarnings(guildId);
+        res.end(JSON.stringify(warns));
+      } catch { res.end(JSON.stringify([])); }
+      return;
+    }
+
+    if (url === "/api/logging") {
+      const result = {};
+      for (const [guildId, cfg] of loggingConfig) {
+        result[guildId] = cfg;
+      }
+      res.end(JSON.stringify(result));
+      return;
+    }
+
+    if (url?.startsWith("/api/economy/leaderboard/")) {
+      const guildId = url.split("/api/economy/leaderboard/")[1];
+      if (!guildId) { res.statusCode = 400; res.end(JSON.stringify({ error: "guildId required" })); return; }
+      try {
+        const rows = await getLeaderboard(guildId, "coins", 10);
+        res.end(JSON.stringify(rows));
+      } catch { res.end(JSON.stringify([])); }
+      return;
+    }
   }
 
   if (req.method === "POST") {
@@ -488,12 +546,11 @@ const server = createServer(async (req, res) => {
       const list = triggers.get(guildId);
       const idx = list.findIndex((t) => t.phrase === phrase.toLowerCase());
       if (idx !== -1) list.splice(idx, 1);
-      list.push({
-        phrase: phrase.toLowerCase(),
-        response: response.replace(/\\n/g, "\n"),
-        exact: !!exact,
-      });
+      const p = phrase.toLowerCase();
+      const r = response.replace(/\\n/g, "\n");
+      list.push({ phrase: p, response: r, exact: !!exact });
       triggers.set(guildId, list);
+      await upsertTrigger(guildId, p, r, !!exact);
       res.end(JSON.stringify({ success: true }));
       return;
     }
@@ -506,10 +563,25 @@ const server = createServer(async (req, res) => {
         return;
       }
       const list = triggers.get(guildId) || [];
-      triggers.set(
-        guildId,
-        list.filter((t) => t.phrase !== phrase.toLowerCase()),
-      );
+      triggers.set(guildId, list.filter((t) => t.phrase !== phrase.toLowerCase()));
+      await deleteTrigger(guildId, phrase.toLowerCase());
+      res.end(JSON.stringify({ success: true }));
+      return;
+    }
+
+    if (url === "/api/logging/update") {
+      const { guildId, enabled, channelId, events } = body;
+      if (!guildId) { res.statusCode = 400; res.end(JSON.stringify({ error: "guildId required" })); return; }
+      const current = loggingConfig.get(guildId) || { enabled: false, channelId: null, events: [] };
+      if (enabled !== undefined) current.enabled = !!enabled;
+      if (channelId !== undefined) current.channelId = channelId;
+      if (events !== undefined) current.events = events;
+      loggingConfig.set(guildId, current);
+      await upsertGuildSettings(guildId, {
+        logging_enabled: current.enabled,
+        log_channel_id: current.channelId,
+        log_events: JSON.stringify(current.events),
+      });
       res.end(JSON.stringify({ success: true }));
       return;
     }

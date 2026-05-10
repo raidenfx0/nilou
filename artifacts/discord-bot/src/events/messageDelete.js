@@ -1,6 +1,7 @@
 import { Events, EmbedBuilder } from "discord.js";
 import { ghostPingChannels } from "../data/store.js";
 import { NILOU_RED, FOOTER_GHOST } from "../theme.js";
+import { sendLog } from "../utils/logger.js";
 
 export const name = Events.MessageDelete;
 
@@ -67,4 +68,13 @@ export async function execute(message) {
     .setTimestamp();
 
   await channel.send({ embeds: [embed] });
+
+  await sendLog(message.guild, "messageDelete", {
+    title: "💬 Ghost Ping + Message Deleted",
+    description:
+      `**Author:** ${message.author?.tag} (<@${message.author?.id}>)\n` +
+      `**Channel:** <#${message.channelId}>\n` +
+      `**Pinged:** ${allPings}\n` +
+      `**Content:** ${message.content?.slice(0, 600) || "*No text*"}`,
+  });
 }
