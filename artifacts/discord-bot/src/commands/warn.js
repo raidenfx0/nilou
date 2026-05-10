@@ -21,7 +21,7 @@ export const data = new SlashCommandBuilder()
       .setDescription("Warn a user")
       .addUserOption(o => o.setName("user").setDescription("User to warn").setRequired(true))
       .addStringOption(o => o.setName("reason").setDescription("Reason").setRequired(true))
-      .addIntegerOption(o => o.setName("points").setDescription("Warning points (default 1)").setMinValue(1).setMaxValue(5).setRequired(false))
+      .addIntegerOption(o => o.setName("points").setDescription("Warning points (default 1)").setMinValue(1).setMaxValue(10).setRequired(false))
   )
   .addSubcommand(sub =>
     sub.setName("list")
