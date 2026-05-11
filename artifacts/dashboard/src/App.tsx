@@ -11,13 +11,14 @@ interface Guild     { id:string; name:string; memberCount:number; icon:string|nu
 interface Giveaway  { messageId:string; prize:string; winnerCount:number; endTime:number; hostId:string; guildId:string; channelId:string; ended:boolean; winners:string[]; }
 interface Trigger   { phrase:string; response:string; exact:boolean; }
 interface Countdown { name:string; unixTs:number; description:string|null; pinned:{channelId:string;messageId:string}|null; }
-interface Sticky    { guildId:string; channelId:string; title:string|null; content:string; color:number; lastMessageId:string|null; }
+interface Sticky    { guildId:string; channelId:string; title:string|null; content:string; color:number; lastMessageId:string|null; type?:string; }
+interface WelcomeCfg { channelId:string; title:string|null; message:string|null; color:number; thumbnail:string; image:string|null; showFields:boolean; }
 interface Warning   { id:number; guild_id:string; user_id:string; moderator_id:string; reason:string; points:number; active:boolean; created_at:string; }
 interface LoggingCfg { enabled:boolean; channelId:string|null; events:string[]; }
 interface EcoRow     { user_id:string; guild_id:string; coins:number; theater_credits:number; fame:number; exp:number; level:number; rank:string; }
 interface CountingCfg { channelId:string; currentCount:number; highScore:number; lastUserId:string|null; failedAt:number; }
 
-type TabKey = "overview"|"embed"|"countdown"|"giveaways"|"triggers"|"guilds"|"tickets"|"afk"|"sticky"|"logging"|"warns"|"economy"|"counting"|"commands";
+type TabKey = "overview"|"embed"|"countdown"|"giveaways"|"triggers"|"guilds"|"tickets"|"afk"|"sticky"|"logging"|"welcome"|"warns"|"economy"|"counting"|"commands";
 
 /* ─── Helpers ──────────────────────────────────────────────────────────── */
 function timeAgo(ms:number) {
@@ -54,18 +55,30 @@ const COMMANDS = [
   {name:"/timestamp",desc:"Generate a dynamic Discord timestamp",cat:"Utility"},
   {name:"/embed",desc:"Send a styled embed",cat:"Utility"},
   {name:"/countdown set/show/pin/unpin",desc:"Manage festival countdowns",cat:"Utility"},
+  {name:"/adminrole set/remove/view",desc:"Set which role can use admin commands (saved to DB)",cat:"Utility"},
+  {name:"/welcome set/disable/test/info",desc:"Configure welcome embed (full builder)",cat:"Utility"},
   {name:"/afk set/clear",desc:"AFK status system",cat:"AFK"},
   {name:"/ticket open/close/panel/setup",desc:"Full ticket system",cat:"Tickets"},
   {name:"/giveaway start/end/reroll/list",desc:"Giveaway management",cat:"Giveaway"},
   {name:"/trigger add/remove/list",desc:"Auto-response triggers",cat:"Triggers"},
-  {name:"/sticky set/remove/view",desc:"Sticky message in channel",cat:"Moderation"},
+  {name:"/sticky set",desc:"Embed sticky message with image/thumbnail/footer",cat:"Moderation"},
+  {name:"/sticky set-plain",desc:"Plain text sticky message",cat:"Moderation"},
+  {name:"/sticky remove/view",desc:"Manage sticky messages",cat:"Moderation"},
   {name:"/purge",desc:"Bulk delete messages",cat:"Moderation"},
   {name:"/warn add/list/remove/clear/server",desc:"Warning points system",cat:"Moderation"},
   {name:"/logging setup/enable/disable/events",desc:"Configure server logging",cat:"Moderation"},
   {name:"/ban /kick /timeout /role",desc:"Standard moderation",cat:"Moderation"},
-  {name:"/economy perform",desc:"Perform on stage to earn coins",cat:"Economy"},
-  {name:"/economy balance/profile/shop/buy",desc:"Economy management",cat:"Economy"},
-  {name:"/economy inventory/leaderboard",desc:"Items and rankings",cat:"Economy"},
+  {name:"/economy daily",desc:"Claim daily reward with streak bonuses (up to +150%!)",cat:"Economy"},
+  {name:"/economy perform",desc:"Perform on stage — coins, TC, fame, EXP (30m cooldown)",cat:"Economy"},
+  {name:"/economy work",desc:"Quick work shift for coins (4h cooldown)",cat:"Economy"},
+  {name:"/economy balance",desc:"Check your coins and Theater Credits",cat:"Economy"},
+  {name:"/economy profile [user]",desc:"Full theater profile card",cat:"Economy"},
+  {name:"/economy shop",desc:"Browse Menakeri's Treasure Shop",cat:"Economy"},
+  {name:"/economy buy <item>",desc:"Buy an item from the shop",cat:"Economy"},
+  {name:"/economy inventory [user]",desc:"View inventory items",cat:"Economy"},
+  {name:"/economy transfer <user> <amount>",desc:"Send coins to another user",cat:"Economy"},
+  {name:"/economy leaderboard",desc:"Top performers by coins, TC, fame, or EXP",cat:"Economy"},
+  {name:"/collect",desc:"Claim a Theater channel drop — first come, first served!",cat:"Economy"},
   {name:"/gamble bet/slots/roulette/credits",desc:"Theater Gambling Hall",cat:"Economy"},
   {name:"/emojihunt start/stop/stats",desc:"Emoji scavenger hunt (earns Theater Credits!)",cat:"Economy"},
   {name:"/register /about /profile /build",desc:"Genshin Impact UID system",cat:"Genshin"},
@@ -138,6 +151,7 @@ export default function App() {
     {key:"triggers",  label:"Triggers",    emoji:"💬"},
     {key:"sticky",    label:"Sticky",      emoji:"📌"},
     {key:"logging",   label:"Logging",     emoji:"📋"},
+    {key:"welcome",   label:"Welcome",     emoji:"🌸"},
     {key:"warns",     label:"Warns",       emoji:"⚠️"},
     {key:"economy",   label:"Economy",     emoji:"💠"},
     {key:"counting",  label:"Counting",    emoji:"🔢"},
@@ -192,6 +206,7 @@ export default function App() {
             {tab==="triggers"  &&<TriggersTab triggerMap={triggerMap} guilds={guilds} onRefresh={fetchAll}/>}
             {tab==="sticky"    &&<StickyTab stickies={stickies} guilds={guilds}/>}
             {tab==="logging"   &&<LoggingTab guilds={guilds} loggingMap={loggingMap} onRefresh={fetchAll}/>}
+            {tab==="welcome"   &&<WelcomeTab guilds={guilds}/>}
             {tab==="warns"     &&<WarnsTab guilds={guilds}/>}
             {tab==="economy"   &&<EconomyTab guilds={guilds}/>}
             {tab==="counting"  &&<CountingTab guilds={guilds} countingMap={countingMap}/>}
@@ -610,6 +625,143 @@ function LoggingTab({guilds,loggingMap,onRefresh}:{guilds:Guild[];loggingMap:Rec
               </button>
             );
           })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Welcome Builder ──────────────────────────────────────────────────── */
+function WelcomeTab({guilds}:{guilds:Guild[]}) {
+  const [guildId,setGuildId]     = useState(guilds[0]?.id||"");
+  const [channelId,setChannelId] = useState("");
+  const [title,setTitle]         = useState("Welcome to {server}!");
+  const [message,setMessage]     = useState("Welcome to **{server}**, {user}!\\nYou are member #{count}.");
+  const [color,setColor]         = useState("#E84057");
+  const [thumbnail,setThumbnail] = useState("avatar");
+  const [image,setImage]         = useState("");
+  const [showFields,setShowFields]= useState(true);
+  const [saving,setSaving]       = useState(false);
+  const [result,setResult]       = useState<{ok:boolean;msg:string}|null>(null);
+
+  const previewDesc=message.replace(/\\n/g,"\n")
+    .replace(/{user}/g,"@NewMember")
+    .replace(/{server}/g,guilds.find(g=>g.id===guildId)?.name||"Server")
+    .replace(/{count}/g,"42")
+    .replace(/{user\.tag}/g,"NewMember#0000")
+    .replace(/{user\.name}/g,"NewMember");
+
+  const previewTitle=title
+    .replace(/{server}/g,guilds.find(g=>g.id===guildId)?.name||"Server");
+
+  const save=async()=>{
+    if(!guildId||!channelId){setResult({ok:false,msg:"Select a server and enter a channel ID."});return;}
+    setSaving(true);setResult(null);
+    try{
+      const r=await fetch(`${API}/welcome/update`,{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({guildId,channelId,title:title||null,message:message||null,color,thumbnail:thumbnail||"avatar",image:image||null,showFields})});
+      const d=await r.json();
+      if(d.success)setResult({ok:true,msg:"Welcome config saved! Use /welcome test in Discord to preview. 🌸"});
+      else setResult({ok:false,msg:d.error||"Failed."});
+    }catch{setResult({ok:false,msg:"Network error."});}
+    finally{setSaving(false);}
+  };
+
+  return (
+    <div className="space-y-6">
+      <h2 className="text-lg font-bold text-primary">🌸 Welcome Embed Builder</h2>
+      <p className="text-sm text-muted-foreground">
+        Design the welcome embed for new members. Variables: <code className="text-primary bg-rose-950/50 px-1 rounded">{"{user}"}</code> <code className="text-primary bg-rose-950/50 px-1 rounded">{"{server}"}</code> <code className="text-primary bg-rose-950/50 px-1 rounded">{"{count}"}</code> <code className="text-primary bg-rose-950/50 px-1 rounded">{"{user.name}"}</code>
+      </p>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="space-y-4">
+          <div className="rounded-xl border border-rose-900/40 bg-card p-5 space-y-3">
+            <h3 className="font-semibold text-primary">Channel & Server</h3>
+            <div><label className="text-xs text-muted-foreground uppercase tracking-wide mb-1 block">Server</label>
+              <select value={guildId} onChange={e=>setGuildId(e.target.value)} className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary">
+                {guilds.map(g=><option key={g.id} value={g.id}>{g.name}</option>)}</select></div>
+            <div><label className="text-xs text-muted-foreground uppercase tracking-wide mb-1 block">Welcome Channel ID *</label>
+              <input value={channelId} onChange={e=>setChannelId(e.target.value)} placeholder="Right-click channel → Copy ID" className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary font-mono"/></div>
+          </div>
+
+          <div className="rounded-xl border border-rose-900/40 bg-card p-5 space-y-3">
+            <h3 className="font-semibold text-primary">Embed Content</h3>
+            <div><label className="text-xs text-muted-foreground uppercase tracking-wide mb-1 block">Title</label>
+              <input value={title} onChange={e=>setTitle(e.target.value)} placeholder="Welcome to {server}!" className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"/></div>
+            <div><label className="text-xs text-muted-foreground uppercase tracking-wide mb-1 block">Description (use {`\\n`} for new lines)</label>
+              <textarea rows={3} value={message} onChange={e=>setMessage(e.target.value)} placeholder="Welcome, {user}!" className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary resize-none"/></div>
+            <div><label className="text-xs text-muted-foreground uppercase tracking-wide mb-1 block">Embed Color</label>
+              <div className="flex gap-2 items-center">
+                <input type="color" value={color} onChange={e=>setColor(e.target.value)} className="w-10 h-9 rounded border border-border bg-transparent cursor-pointer"/>
+                <input value={color} onChange={e=>setColor(e.target.value)} className="flex-1 bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary font-mono"/>
+              </div></div>
+          </div>
+
+          <div className="rounded-xl border border-rose-900/40 bg-card p-5 space-y-3">
+            <h3 className="font-semibold text-primary">Images & Extras</h3>
+            <div><label className="text-xs text-muted-foreground uppercase tracking-wide mb-1 block">Thumbnail</label>
+              <select value={thumbnail} onChange={e=>setThumbnail(e.target.value)} className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary">
+                <option value="avatar">User Avatar (default)</option>
+                <option value="none">None</option>
+                <option value="custom">Custom URL</option>
+              </select>
+              {thumbnail==="custom"&&<input value={thumbnail.startsWith("http")?thumbnail:""} onChange={e=>setThumbnail(e.target.value)} placeholder="https://..." className="mt-2 w-full bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"/>}
+            </div>
+            <div><label className="text-xs text-muted-foreground uppercase tracking-wide mb-1 block">Banner Image URL (optional)</label>
+              <input value={image} onChange={e=>setImage(e.target.value)} placeholder="https://..." className="w-full bg-input border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"/></div>
+            <label className="flex items-center gap-3 cursor-pointer">
+              <div onClick={()=>setShowFields(v=>!v)} className={`w-10 h-5 rounded-full transition-colors ${showFields?"bg-primary":"bg-gray-700"} relative`}>
+                <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform ${showFields?"translate-x-5":""}`}/>
+              </div>
+              <span className="text-sm text-foreground">Show account age, join date & member count fields</span>
+            </label>
+          </div>
+
+          {result&&<div className={`rounded-lg border px-4 py-3 text-sm ${result.ok?"border-green-800/50 bg-green-950/30 text-green-400":"border-red-800/50 bg-red-950/30 text-red-400"}`}>{result.msg}</div>}
+          <button onClick={save} disabled={saving} className="w-full py-2.5 bg-primary text-white rounded-lg font-semibold text-sm hover:bg-primary/80 disabled:opacity-50 transition-colors">
+            {saving?"Saving...":"🌸 Save Welcome Config"}</button>
+        </div>
+
+        <div className="space-y-4">
+          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Live Preview</h3>
+          <div className="rounded-xl bg-[#1a0a0d] border border-rose-900/60 overflow-hidden">
+            <div style={{borderLeft:`4px solid ${color}`}} className="p-4">
+              <div className="flex items-start gap-3">
+                <div className="flex-1">
+                  <p className="font-bold text-white text-sm mb-1">🌸 ✦ {previewTitle}</p>
+                  <div className="h-px bg-white/10 my-2"/>
+                  <p className="text-gray-300 text-sm whitespace-pre-wrap leading-relaxed">{previewDesc}</p>
+                  {showFields&&(
+                    <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+                      <div className="bg-white/5 rounded p-2"><p className="text-rose-300 font-semibold">🌺 Account Created</p><p className="text-gray-400">3 years ago</p></div>
+                      <div className="bg-white/5 rounded p-2"><p className="text-rose-300 font-semibold">💧 Joined Server</p><p className="text-gray-400">Today</p></div>
+                      <div className="bg-white/5 rounded p-2"><p className="text-rose-300 font-semibold">✨ Member Count</p><p className="text-gray-400">#42</p></div>
+                    </div>
+                  )}
+                  {image&&<img src={image} alt="banner" className="mt-3 rounded-lg max-w-full max-h-32 object-cover"/>}
+                </div>
+                <div className="w-12 h-12 rounded-full bg-rose-900/40 border border-rose-800/40 flex items-center justify-center text-xl shrink-0">👤</div>
+              </div>
+              <div className="mt-3 pt-2 border-t border-white/10 text-xs text-gray-400">🌸 Nilou • ID: 123456789</div>
+            </div>
+          </div>
+          <div className="rounded-xl border border-rose-900/40 bg-card p-4">
+            <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Variable Reference</h4>
+            <div className="space-y-1 text-xs">
+              {[
+                ["{user}","Pings the new member"],
+                ["{server}","Server name"],
+                ["{count}","Member count number"],
+                ["{user.name}","Username without discriminator"],
+                ["{user.tag}","Full username#0000"],
+              ].map(([v,d])=>(
+                <div key={v} className="flex items-center gap-2">
+                  <code className="text-primary bg-rose-950/40 border border-rose-900/30 px-1.5 py-0.5 rounded shrink-0">{v}</code>
+                  <span className="text-muted-foreground">{d}</span>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     </div>

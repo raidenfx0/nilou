@@ -14,55 +14,44 @@ function ordinal(n) {
 export async function execute(member) {
   const { guild, user } = member;
 
-  // --- PART 1: AUTO-ROLE LOGIC ---
-  const roleType = user.bot ? 'botRole' : 'humanRole';
-  const autoRoleId = guildStore.get(guild.id, roleType);
-
-  if (autoRoleId) {
-    try {
-      const role = await guild.roles.fetch(autoRoleId);
-      if (role && role.editable) {
-        await member.roles.add(role);
-        console.log(`🌸 Auto-assigned ${role.name} to ${user.tag}`);
-      }
-    } catch (err) {
-      console.error(`❌ Auto-role Error:`, err.message);
-    }
-  }
-
-  // --- PART 2: WELCOME MESSAGE LOGIC ---
   const config = welcomeChannels.get(guild.id);
   if (!config) return;
 
   const channel = guild.channels.cache.get(config.channelId);
   if (!channel) return;
 
-  const joinedAt = Math.floor(member.joinedTimestamp / 1000);
+  const joinedAt       = Math.floor(member.joinedTimestamp / 1000);
   const accountCreated = Math.floor(user.createdTimestamp / 1000);
-  const memberCount = guild.memberCount;
+  const memberCount    = guild.memberCount;
 
   const description = config.message
     ? config.message
-        .replace("{user}", `<@${member.id}>`)
-        .replace("{server}", guild.name)
-        .replace("{count}", memberCount.toString())
-    : `The stage lights shimmer as a new dancer arrives...\n\n${DIVIDER}\n\nWelcome to **${guild.name}**, <@${member.id}>!\nYou are the **${memberCount}${ordinal(memberCount)}** member to join our theater. 🌸\n\n${DIVIDER}`;
+        .replace(/{user}/g, `<@${member.id}>`)
+        .replace(/{server}/g, guild.name)
+        .replace(/{count}/g, memberCount.toString())
+        .replace(/{user\.tag}/g, user.tag)
+        .replace(/{user\.name}/g, user.username)
+    : `Welcome to **${guild.name}**, <@${member.id}>!\nYou are the **${memberCount}${ordinal(memberCount)}** member to join. 🌸`;
 
   const embed = new EmbedBuilder()
     .setColor(config.color || NILOU_RED)
     .setTitle(`🌸 ✦ ${config.title || `Welcome to ${guild.name}!`}`)
-    .setDescription(description)
-    .setThumbnail(user.displayAvatarURL({ dynamic: true }))
-    .addFields(
-      { name: "🌺 Account Created", value: `<t:${accountCreated}:R>`, inline: true },
-      { name: "💧 Joined Server", value: `<t:${joinedAt}:F>`, inline: true },
-      { name: "✨ Member Count", value: `**#${memberCount}**`, inline: true }
-    )
-    .setFooter({
-      text: `🌸 Nilou • ID: ${member.id}`,
-      iconURL: guild.iconURL({ dynamic: true }) || undefined,
-    })
+    .setDescription(`${DIVIDER}\n${description}\n${DIVIDER}`)
+    .setFooter({ text: `🌸 Nilou • ID: ${member.id}`, iconURL: guild.iconURL({ dynamic: true }) || undefined })
     .setTimestamp();
+
+  if (config.thumbnail === "avatar") embed.setThumbnail(user.displayAvatarURL({ dynamic: true }));
+  else if (config.thumbnail && config.thumbnail.startsWith("http")) embed.setThumbnail(config.thumbnail);
+
+  if (config.image && config.image.startsWith("http")) embed.setImage(config.image);
+
+  if (config.showFields !== false) {
+    embed.addFields(
+      { name: "🌺 Account Created", value: `<t:${accountCreated}:R>`, inline: true },
+      { name: "💧 Joined Server",   value: `<t:${joinedAt}:F>`,       inline: true },
+      { name: "✨ Member Count",    value: `**#${memberCount}**`,       inline: true }
+    );
+  }
 
   try {
     await channel.send({ embeds: [embed] });

@@ -40,6 +40,7 @@ import {
   pinnedCountdowns,
   loggingConfig,
   countingChannels,
+  pendingDrops,
 } from "./data/store.js";
 import { NILOU_RED, FOOTER_MAIN, DIVIDER } from "./theme.js";
 import { isAdmin } from "./utils/adminCheck.js";
@@ -117,7 +118,12 @@ client.manager = new Kazagumo({
     const guild = client.guilds.cache.get(guildId);
     if (guild) guild.shard.send(payload);
   }
-}, new Connectors.DiscordJS(client), Nodes);
+}, new Connectors.DiscordJS(client), Nodes, {
+  reconnectTries: 5,
+  reconnectInterval: 5000,
+  moveOnDisconnect: true,
+  restTimeout: 60000,
+});
 
 // --- Lavalink Event Handling ---
 client.manager.shoukaku.on("ready", (name) => {
@@ -601,6 +607,50 @@ const server = createServer(async (req, res) => {
         log_events: JSON.stringify(current.events),
       });
       res.end(JSON.stringify({ success: true }));
+      return;
+    }
+
+    if (url === "/api/welcome/update") {
+      const { guildId, channelId, title, message, color, thumbnail, image, showFields } = body;
+      if (!guildId || !channelId) { res.statusCode = 400; res.end(JSON.stringify({ error: "guildId and channelId required" })); return; }
+      const parsedColor = color ? parseInt(String(color).replace("#",""), 16) : 0xE84057;
+      const config = {
+        channelId,
+        title:      title      || null,
+        message:    message    || null,
+        color:      isNaN(parsedColor) ? 0xE84057 : parsedColor,
+        thumbnail:  thumbnail  || "avatar",
+        image:      image      || null,
+        showFields: showFields !== false,
+      };
+      welcomeChannels.set(guildId, config);
+      await upsertGuildSettings(guildId, {
+        welcome_channel_id:  channelId,
+        welcome_title:       config.title,
+        welcome_description: config.message,
+        welcome_color:       config.color,
+        welcome_thumbnail:   config.thumbnail,
+        welcome_image_url:   config.image,
+        welcome_show_fields: config.showFields,
+      });
+      res.end(JSON.stringify({ success: true }));
+      return;
+    }
+
+    if (url === "/api/welcome/get") {
+      const { guildId } = body;
+      if (!guildId) { res.statusCode = 400; res.end(JSON.stringify({ error: "guildId required" })); return; }
+      const config = welcomeChannels.get(guildId) || null;
+      res.end(JSON.stringify(config));
+      return;
+    }
+
+    if (url === "/api/drops") {
+      const list = [];
+      for (const [channelId, drop] of pendingDrops) {
+        list.push({ channelId, ...drop, remainingMs: Math.max(0, drop.expiry - Date.now()) });
+      }
+      res.end(JSON.stringify(list));
       return;
     }
   }

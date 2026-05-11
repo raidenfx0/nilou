@@ -13,6 +13,9 @@ export const pinnedCountdowns  = new Map();
 export const loggingConfig     = new Map();
 export const countingChannels  = new Map();
 
+// channelId → { guildId, amount, type, itemName, msgId, expiry }
+export const pendingDrops      = new Map();
+
 export const botStats = {
   startTime: Date.now(),
 };
