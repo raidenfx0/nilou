@@ -10,7 +10,7 @@ const channelMsgCount = new Map(); // `${guildId}:${channelId}` → count
 const XP_PER_MSG    = 5;
 const COINS_PER_MSG = 2;
 const XP_COOLDOWN   = 60_000;
-const DROP_EVERY    = 18;          // messages between drops
+const DROP_EVERY    = 100;          // messages between drops
 const DROP_EXPIRE   = 120_000;     // 2 min to collect
 
 // EXP thresholds (same as economy.js)
