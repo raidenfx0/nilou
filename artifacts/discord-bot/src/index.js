@@ -41,7 +41,7 @@ import {
   loggingConfig,
   countingChannels,
   pendingDrops,
-  starboardConfig,
+  starboards,
 } from "./data/store.js";
 import { NILOU_RED, FOOTER_MAIN, DIVIDER } from "./theme.js";
 import { isAdmin } from "./utils/adminCheck.js";
@@ -169,7 +169,7 @@ loadEvents(client);
 const store = {
   afkUsers, stickyMessages, tickets, ticketConfig, giveaways,
   triggers, countdowns, pinnedCountdowns, adminRoles, welcomeChannels,
-  loggingConfig, countingChannels, starboardConfig,
+  loggingConfig, countingChannels, starboards,
 };
 
 // Hydrate all in-memory maps from PostgreSQL before login
@@ -485,8 +485,10 @@ const server = createServer(async (req, res) => {
 
     if (url === "/api/starboard") {
       const result = {};
-      for (const [guildId, cfg] of starboardConfig) {
-        result[guildId] = cfg;
+      for (const [key, cfg] of starboards) {
+        const guildId = key.split(":")[0];
+        if (!result[guildId]) result[guildId] = [];
+        result[guildId].push(cfg);
       }
       res.end(JSON.stringify(result));
       return;

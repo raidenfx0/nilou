@@ -1091,43 +1091,51 @@ function CountingTab({guilds,countingMap}:{guilds:Guild[];countingMap:Record<str
 }
 
 /* ─── Starboard ────────────────────────────────────────────────────────── */
-function StarboardTab({guilds,starboardMap}:{guilds:Guild[];starboardMap:Record<string,any>}){
+function StarboardTab({guilds,starboardMap}:{guilds:Guild[];starboardMap:Record<string,any[]>}){
   const guildName=(id:string)=>guilds.find(g=>g.id===id)?.name||id;
-  const entries=Object.entries(starboardMap);
+  const allStarboards: {guildId:string;sb:any}[] = [];
+  for (const [guildId, list] of Object.entries(starboardMap)) {
+    if (Array.isArray(list)) {
+      for (const sb of list) allStarboards.push({guildId, sb});
+    } else if (list) {
+      allStarboards.push({guildId, sb: list});
+    }
+  }
   return(
     <div className="space-y-6">
-      <h2 className="text-lg font-bold text-primary">⭐ Starboard</h2>
-      <p className="text-sm text-muted-foreground">Messages that get enough reactions are pinned to the starboard channel. Use <code className="text-primary">/starboard setup</code> in Discord.</p>
-      {entries.length===0?(
+      <h2 className="text-lg font-bold text-primary">⭐ Starboards</h2>
+      <p className="text-sm text-muted-foreground">Messages that get enough reactions are pinned to the starboard channel. Create multiple starboards with different emojis!</p>
+      {allStarboards.length===0?(
         <div className="rounded-xl border border-rose-900/40 bg-card p-8 text-center text-muted-foreground">
           <div className="text-4xl mb-3">⭐</div>
           <p>No starboards configured yet.</p>
-          <p className="text-sm mt-1">Use <code className="text-primary">/starboard setup</code> in Discord to start.</p>
+          <p className="text-sm mt-1">Use <code className="text-primary">/starboard create</code> in Discord to start.</p>
         </div>
       ):(
         <div className="space-y-4">
-          {entries.map(([guildId,cfg])=>{
-            const bl=(cfg.blacklist||[]).length;
+          {allStarboards.map(({guildId,sb})=>{
+            const bl=(sb.blacklist||[]).length;
             return(
-              <div key={guildId} className="rounded-xl border border-rose-900/40 bg-card p-5">
+              <div key={`${guildId}-${sb.name}`} className="rounded-xl border border-rose-900/40 bg-card p-5">
                 <div className="flex items-start justify-between gap-3 mb-3">
                   <div>
-                    <h3 className="font-bold text-foreground">{guildName(guildId)}</h3>
-                    <p className="text-xs text-muted-foreground mt-0.5">Channel: <span className="font-mono">#{cfg.channelId}</span></p>
+                    <h3 className="font-bold text-foreground">{sb.name}</h3>
+                    <p className="text-xs text-muted-foreground mt-0.5">{guildName(guildId)} · <span className="font-mono">#{sb.channelId}</span></p>
                   </div>
-                  <span className={`text-xs px-2 py-1 rounded-full border ${cfg.enabled?"bg-green-950/30 text-green-300 border-green-800/40":"bg-red-950/30 text-red-300 border-red-800/40"} shrink-0`}>
-                    {cfg.enabled?"Enabled":"Disabled"}
+                  <span className={`text-xs px-2 py-1 rounded-full border ${sb.enabled?"bg-green-950/30 text-green-300 border-green-800/40":"bg-red-950/30 text-red-300 border-red-800/40"} shrink-0`}>
+                    {sb.enabled?"Enabled":"Disabled"}
                   </span>
                 </div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-center mb-3">
-                  <div><p className="text-xl font-bold text-primary">{cfg.emoji||"⭐"}</p><p className="text-xs text-muted-foreground mt-0.5">Emoji</p></div>
-                  <div><p className="text-xl font-bold text-primary">{cfg.threshold||3}</p><p className="text-xs text-muted-foreground mt-0.5">Threshold</p></div>
-                  <div><p className="text-xl font-bold text-primary">{cfg.selfStar?"Yes":"No"}</p><p className="text-xs text-muted-foreground mt-0.5">Self-Star</p></div>
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-center mb-3">
+                  <div><p className="text-xl font-bold text-primary">{sb.emoji||"⭐"}</p><p className="text-xs text-muted-foreground mt-0.5">Emoji</p></div>
+                  <div><p className="text-xl font-bold text-primary">{sb.threshold||3}</p><p className="text-xs text-muted-foreground mt-0.5">Threshold</p></div>
+                  <div><p className="text-xl font-bold text-primary">{sb.selfStar?"Yes":"No"}</p><p className="text-xs text-muted-foreground mt-0.5">Self-Star</p></div>
                   <div><p className="text-xl font-bold text-primary">{bl}</p><p className="text-xs text-muted-foreground mt-0.5">Blacklisted</p></div>
+                  <div><p className="text-xl font-bold text-primary">{sb.id||"-"}</p><p className="text-xs text-muted-foreground mt-0.5">ID</p></div>
                 </div>
                 {bl>0&&(
                   <div className="text-xs text-muted-foreground">
-                    Blacklisted channels: <span className="font-mono">{cfg.blacklist.join(", ")}</span>
+                    Blacklisted channels: <span className="font-mono">{sb.blacklist.join(", ")}</span>
                   </div>
                 )}
               </div>
@@ -1139,15 +1147,15 @@ function StarboardTab({guilds,starboardMap}:{guilds:Guild[];starboardMap:Record<
         <h3 className="font-semibold text-primary mb-3">📖 Command Reference</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
           {[
-            {cmd:"/starboard setup <channel>",desc:"Set the starboard channel"},
-            {cmd:"/starboard remove",desc:"Remove the starboard"},
-            {cmd:"/starboard emoji <emoji>",desc:"Set the star emoji (default: ⭐)"},
-            {cmd:"/starboard threshold <count>",desc:"Set minimum star count (default: 3)"},
-            {cmd:"/starboard self <enabled>",desc:"Toggle self-starring"},
-            {cmd:"/starboard blacklist <channel>",desc:"Block a channel from starboard"},
-            {cmd:"/starboard unblacklist <channel>",desc:"Unblock a channel"},
-            {cmd:"/starboard stats",desc:"View starboard statistics"},
-            {cmd:"/starboard config",desc:"View current configuration"},
+            {cmd:"/starboard create <name> <channel> <emoji>",desc:"Create a new starboard"},
+            {cmd:"/starboard delete <name>",desc:"Delete a starboard"},
+            {cmd:"/starboard list",desc:"List all starboards"},
+            {cmd:"/starboard threshold <name> <count>",desc:"Set minimum stars"},
+            {cmd:"/starboard self <name> <enabled>",desc:"Toggle self-starring"},
+            {cmd:"/starboard blacklist <name> <channel>",desc:"Block a channel"},
+            {cmd:"/starboard unblacklist <name> <channel>",desc:"Unblock a channel"},
+            {cmd:"/starboard stats <name>",desc:"View statistics"},
+            {cmd:"/starboard config <name>",desc:"View configuration"},
           ].map(({cmd,desc})=>(
             <div key={cmd} className="flex items-start gap-2">
               <code className="text-primary bg-rose-950/40 border border-rose-900/30 px-1.5 py-0.5 rounded shrink-0">{cmd}</code>

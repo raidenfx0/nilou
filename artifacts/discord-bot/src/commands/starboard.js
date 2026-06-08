@@ -1,131 +1,173 @@
 import { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } from "discord.js";
-import { starboardConfig } from "../data/store.js";
-import { upsertGuildSettings, getStarboardStats } from "../db/index.js";
+import { starboards } from "../data/store.js";
+import { createStarboard, deleteStarboard, getStarboard, getStarboardsByGuild, updateStarboard, getStarboardStats } from "../db/index.js";
 import { NILOU_RED, FOOTER_MAIN } from "../theme.js";
 
 export const data = new SlashCommandBuilder()
   .setName("starboard")
-  .setDescription("Manage the starboard — where starred messages shine!")
+  .setDescription("Manage starboards — create multiple starboards with different emojis!")
   .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-  .addSubcommand(sub => sub.setName("setup").setDescription("Set the starboard channel")
+  .addSubcommand(sub => sub.setName("create").setDescription("Create a new starboard")
+    .addStringOption(o => o.setName("name").setDescription("Name for this starboard (e.g. 'main', 'heart')").setRequired(true))
     .addChannelOption(o => o.setName("channel").setDescription("Channel for starred messages").setRequired(true))
+    .addStringOption(o => o.setName("emoji").setDescription("Emoji to trigger this starboard (e.g. ⭐, ❤️)").setRequired(true))
   )
-  .addSubcommand(sub => sub.setName("remove").setDescription("Remove the starboard"))
-  .addSubcommand(sub => sub.setName("emoji").setDescription("Set the star emoji (default: ⭐)")
-    .addStringOption(o => o.setName("emoji").setDescription("Emoji to use for starring (can be custom emoji)").setRequired(true))
+  .addSubcommand(sub => sub.setName("delete").setDescription("Delete a starboard")
+    .addStringOption(o => o.setName("name").setDescription("Name of the starboard to delete").setRequired(true))
   )
-  .addSubcommand(sub => sub.setName("threshold").setDescription("Set the minimum star count (default: 3)")
-    .addIntegerOption(o => o.setName("count").setDescription("Minimum stars needed to show on starboard").setRequired(true).setMinValue(1).setMaxValue(50))
+  .addSubcommand(sub => sub.setName("list").setDescription("List all starboards in this server"))
+  .addSubcommand(sub => sub.setName("threshold").setDescription("Set minimum star count")
+    .addStringOption(o => o.setName("name").setDescription("Starboard name").setRequired(true))
+    .addIntegerOption(o => o.setName("count").setDescription("Minimum stars needed (1-50)").setRequired(true).setMinValue(1).setMaxValue(50))
   )
-  .addSubcommand(sub => sub.setName("self").setDescription("Toggle self-starring (default: off)")
+  .addSubcommand(sub => sub.setName("self").setDescription("Toggle self-starring")
+    .addStringOption(o => o.setName("name").setDescription("Starboard name").setRequired(true))
     .addBooleanOption(o => o.setName("enabled").setDescription("Allow users to star their own messages?").setRequired(true))
   )
-  .addSubcommand(sub => sub.setName("blacklist").setDescription("Block a channel from starboard")
+  .addSubcommand(sub => sub.setName("blacklist").setDescription("Block a channel from a starboard")
+    .addStringOption(o => o.setName("name").setDescription("Starboard name").setRequired(true))
     .addChannelOption(o => o.setName("channel").setDescription("Channel to blacklist").setRequired(true))
   )
-  .addSubcommand(sub => sub.setName("unblacklist").setDescription("Unblock a channel from starboard")
+  .addSubcommand(sub => sub.setName("unblacklist").setDescription("Unblock a channel from a starboard")
+    .addStringOption(o => o.setName("name").setDescription("Starboard name").setRequired(true))
     .addChannelOption(o => o.setName("channel").setDescription("Channel to unblock").setRequired(true))
   )
-  .addSubcommand(sub => sub.setName("stats").setDescription("View starboard statistics"))
-  .addSubcommand(sub => sub.setName("config").setDescription("View current starboard configuration"));
+  .addSubcommand(sub => sub.setName("stats").setDescription("View starboard statistics")
+    .addStringOption(o => o.setName("name").setDescription("Starboard name (optional, defaults to all)").setRequired(false))
+  )
+  .addSubcommand(sub => sub.setName("config").setDescription("View starboard configuration")
+    .addStringOption(o => o.setName("name").setDescription("Starboard name (optional, defaults to all)").setRequired(false))
+  );
 
 export async function execute(interaction) {
-  const sub     = interaction.options.getSubcommand();
+  const sub = interaction.options.getSubcommand();
   const guildId = interaction.guildId;
-  let   cfg     = starboardConfig.get(guildId) || { enabled: false, channelId: null, emoji: "⭐", threshold: 3, selfStar: false, blacklist: [] };
 
-  if (sub === "setup") {
+  const refreshCache = (sb) => {
+    starboards.set(`${guildId}:${sb.emoji}`, {
+      id: sb.id,
+      name: sb.name,
+      emoji: sb.emoji,
+      channelId: sb.channel_id,
+      threshold: sb.threshold,
+      selfStar: sb.self_star,
+      enabled: sb.enabled,
+      blacklist: JSON.parse(sb.blacklist || "[]"),
+    });
+  };
+
+  if (sub === "create") {
+    const name = interaction.options.getString("name").trim().toLowerCase();
     const channel = interaction.options.getChannel("channel");
-    cfg = { ...cfg, enabled: true, channelId: channel.id };
-    starboardConfig.set(guildId, cfg);
-    await upsertGuildSettings(guildId, {
-      starboard_channel_id: channel.id,
-      starboard_enabled: true,
-      starboard_emoji: cfg.emoji,
-      starboard_threshold: cfg.threshold,
-      starboard_self_star: cfg.selfStar,
-    });
-    return interaction.reply({
-      content: `⭐ Starboard set to <#${channel.id}>! Messages with **${cfg.threshold}** ${cfg.emoji} reactions will be posted.`,
-      ephemeral: true,
-    });
-  }
-
-  if (sub === "remove") {
-    if (!cfg.enabled) return interaction.reply({ content: "💧 No starboard is set up.", ephemeral: true });
-    starboardConfig.set(guildId, { enabled: false, channelId: null, emoji: "⭐", threshold: 3, selfStar: false, blacklist: cfg.blacklist });
-    await upsertGuildSettings(guildId, { starboard_enabled: false, starboard_channel_id: null });
-    return interaction.reply({ content: "⭐ Starboard removed. Messages will no longer be starred.", ephemeral: true });
-  }
-
-  if (sub === "emoji") {
     const emoji = interaction.options.getString("emoji").trim();
-    cfg.emoji = emoji;
-    starboardConfig.set(guildId, cfg);
-    await upsertGuildSettings(guildId, { starboard_emoji: emoji });
-    return interaction.reply({ content: `Emoji set to ${emoji}`, ephemeral: true });
+    const sb = await createStarboard(guildId, name, emoji, channel.id);
+    refreshCache(sb);
+    return interaction.reply({
+      content: `⭐ Created starboard **${name}**!\n- Channel: <#${channel.id}>\n- Emoji: ${emoji}\n- Messages with ${sb.threshold} ${emoji} reactions will be posted.`,
+      flags: [1 << 6], // ephemeral
+    });
+  }
+
+  if (sub === "delete") {
+    const name = interaction.options.getString("name").trim().toLowerCase();
+    const sb = await getStarboard(guildId, name);
+    if (!sb) return interaction.reply({ content: `Starboard **${name}** doesn't exist.`, flags: [1 << 6] });
+    starboards.delete(`${guildId}:${sb.emoji}`);
+    await deleteStarboard(guildId, name);
+    return interaction.reply({ content: `Starboard **${name}** deleted.`, flags: [1 << 6] });
+  }
+
+  if (sub === "list") {
+    const rows = await getStarboardsByGuild(guildId);
+    if (!rows.length) return interaction.reply({ content: "No starboards set up. Use `/starboard create` to make one!", flags: [1 << 6] });
+    const lines = rows.map(r => {
+      const status = r.enabled ? "✅" : "❌";
+      return `${status} **${r.name}** — ${r.emoji} in <#${r.channel_id}> (threshold: ${r.threshold})`;
+    });
+    return interaction.reply({ content: `⭐ Starboards:\n${lines.join("\n")}`, flags: [1 << 6] });
   }
 
   if (sub === "threshold") {
+    const name = interaction.options.getString("name").trim().toLowerCase();
     const count = interaction.options.getInteger("count");
-    cfg.threshold = count;
-    starboardConfig.set(guildId, cfg);
-    await upsertGuildSettings(guildId, { starboard_threshold: count });
-    return interaction.reply({ content: `⭐ Starboard threshold set to **${count}** stars.`, ephemeral: true });
+    const sb = await getStarboard(guildId, name);
+    if (!sb) return interaction.reply({ content: `Starboard **${name}** doesn't exist.`, flags: [1 << 6] });
+    await updateStarboard(guildId, name, { threshold: count });
+    const updated = await getStarboard(guildId, name);
+    refreshCache(updated);
+    return interaction.reply({ content: `⭐ Starboard **${name}** threshold set to **${count}** ${sb.emoji}.`, flags: [1 << 6] });
   }
 
   if (sub === "self") {
+    const name = interaction.options.getString("name").trim().toLowerCase();
     const enabled = interaction.options.getBoolean("enabled");
-    cfg.selfStar = enabled;
-    starboardConfig.set(guildId, cfg);
-    await upsertGuildSettings(guildId, { starboard_self_star: enabled });
-    return interaction.reply({ content: `Self-starring is now **${enabled ? "enabled" : "disabled"}**.`, ephemeral: true });
+    const sb = await getStarboard(guildId, name);
+    if (!sb) return interaction.reply({ content: `Starboard **${name}** doesn't exist.`, flags: [1 << 6] });
+    await updateStarboard(guildId, name, { self_star: enabled });
+    const updated = await getStarboard(guildId, name);
+    refreshCache(updated);
+    return interaction.reply({ content: `Self-starring on **${name}** is now **${enabled ? "enabled" : "disabled"}**.`, flags: [1 << 6] });
   }
 
   if (sub === "blacklist") {
+    const name = interaction.options.getString("name").trim().toLowerCase();
     const channel = interaction.options.getChannel("channel");
-    const bl = [...(cfg.blacklist || [])];
-    if (!bl.includes(channel.id)) bl.push(channel.id);
-    cfg.blacklist = bl;
-    starboardConfig.set(guildId, cfg);
-    await upsertGuildSettings(guildId, { starboard_blacklist: JSON.stringify(bl) });
-    return interaction.reply({ content: `🚫 <#${channel.id}> is now blacklisted from starboard.`, ephemeral: true });
+    const sb = await getStarboard(guildId, name);
+    if (!sb) return interaction.reply({ content: `Starboard **${name}** doesn't exist.`, flags: [1 << 6] });
+    const bl = [...new Set([...JSON.parse(sb.blacklist || "[]"), channel.id])];
+    await updateStarboard(guildId, name, { blacklist: JSON.stringify(bl) });
+    const updated = await getStarboard(guildId, name);
+    refreshCache(updated);
+    return interaction.reply({ content: `Ὢb <#${channel.id}> blacklisted from **${name}**.`, flags: [1 << 6] });
   }
 
   if (sub === "unblacklist") {
+    const name = interaction.options.getString("name").trim().toLowerCase();
     const channel = interaction.options.getChannel("channel");
-    const bl = [...(cfg.blacklist || [])].filter(c => c !== channel.id);
-    cfg.blacklist = bl;
-    starboardConfig.set(guildId, cfg);
-    await upsertGuildSettings(guildId, { starboard_blacklist: JSON.stringify(bl) });
-    return interaction.reply({ content: `⭐ <#${channel.id}> is now unblocked from starboard.`, ephemeral: true });
+    const sb = await getStarboard(guildId, name);
+    if (!sb) return interaction.reply({ content: `Starboard **${name}** doesn't exist.`, flags: [1 << 6] });
+    const bl = JSON.parse(sb.blacklist || "[]").filter(c => c !== channel.id);
+    await updateStarboard(guildId, name, { blacklist: JSON.stringify(bl) });
+    const updated = await getStarboard(guildId, name);
+    refreshCache(updated);
+    return interaction.reply({ content: `⭐ <#${channel.id}> unblocked from **${name}**.`, flags: [1 << 6] });
   }
 
   if (sub === "stats") {
-    const stats = await getStarboardStats(guildId);
-    const embed = new EmbedBuilder().setColor(NILOU_RED)
-      .setTitle("⭐ Starboard Statistics")
-      .addFields(
-        { name: "📰 Total Entries", value: String(stats.total || 0), inline: true },
-        { name: "💡 Total Stars Given", value: String(stats.totalStars || 0), inline: true },
-        { name: "🏆 Top Starred", value: stats.top || "No entries yet", inline: true },
-      )
-      .setFooter(FOOTER_MAIN).setTimestamp();
-    return interaction.reply({ embeds: [embed], ephemeral: true });
+    const name = interaction.options.getString("name")?.trim().toLowerCase();
+    const rows = name ? [await getStarboard(guildId, name)].filter(Boolean) : await getStarboardsByGuild(guildId);
+    if (!rows.length) return interaction.reply({ content: "No starboards found.", flags: [1 << 6] });
+
+    const embed = new EmbedBuilder().setColor(NILOU_RED).setTitle("⭐ Starboard Statistics").setFooter(FOOTER_MAIN).setTimestamp();
+    const fields = [];
+    for (const sb of rows) {
+      const stats = await getStarboardStats(guildId, sb.id);
+      fields.push({
+        name: `${sb.emoji} ${sb.name}`,
+        value: `Entries: ${stats.total} | Stars: ${stats.totalStars}\n${stats.top}`,
+        inline: true,
+      });
+    }
+    embed.addFields(fields);
+    return interaction.reply({ embeds: [embed], flags: [1 << 6] });
   }
 
   if (sub === "config") {
-    const embed = new EmbedBuilder().setColor(NILOU_RED)
-      .setTitle("⭐ Starboard Configuration")
-      .addFields(
-        { name: "Enabled",     value: cfg.enabled ? "✅ Yes" : "❌ No", inline: true },
-        { name: "Channel",     value: cfg.channelId ? `<#${cfg.channelId}>` : "Not set", inline: true },
-        { name: "Emoji",       value: cfg.emoji || "⭐", inline: true },
-        { name: "Threshold",   value: String(cfg.threshold || 3), inline: true },
-        { name: "Self Star",   value: cfg.selfStar ? "✅ Yes" : "❌ No", inline: true },
-        { name: "Blacklisted", value: (cfg.blacklist?.length || 0) + " channels", inline: true },
-      )
-      .setFooter(FOOTER_MAIN).setTimestamp();
-    return interaction.reply({ embeds: [embed], ephemeral: true });
+    const name = interaction.options.getString("name")?.trim().toLowerCase();
+    const rows = name ? [await getStarboard(guildId, name)].filter(Boolean) : await getStarboardsByGuild(guildId);
+    if (!rows.length) return interaction.reply({ content: "No starboards found.", flags: [1 << 6] });
+
+    const embed = new EmbedBuilder().setColor(NILOU_RED).setTitle("⭐ Starboard Configuration").setFooter(FOOTER_MAIN).setTimestamp();
+    const fields = [];
+    for (const sb of rows) {
+      const bl = JSON.parse(sb.blacklist || "[]");
+      fields.push({
+        name: `${sb.emoji} ${sb.name}`,
+        value: `Enabled: ${sb.enabled ? "✅" : "❌"}\nChannel: <#${sb.channel_id}>\nThreshold: ${sb.threshold}\nSelf-star: ${sb.self_star ? "✅" : "❌"}\nBlacklisted: ${bl.length} channels`,
+        inline: true,
+      });
+    }
+    embed.addFields(fields);
+    return interaction.reply({ embeds: [embed], flags: [1 << 6] });
   }
 }

@@ -16,11 +16,11 @@ export const countingChannels  = new Map();
 // channelId → { guildId, amount, type, itemName, msgId, expiry }
 export const pendingDrops      = new Map();
 
-// guildId → { enabled, channelId, emoji, threshold, selfStar, blacklist[] }
-export const starboardConfig   = new Map();
+// guildId:emoji → { id, name, channelId, emoji, threshold, selfStar, enabled, blacklist[] }
+export const starboards = new Map();
 
-// guildId:messageId → { guildId, channelId, messageId, starboardMsgId, starCount }
-export const starboardEntries  = new Map();
+// guildId:emoji:messageId → { guildId, starboardId, channelId, messageId, starboardMsgId, starCount }
+export const starboardEntries = new Map();
 
 export const botStats = {
   startTime: Date.now(),
