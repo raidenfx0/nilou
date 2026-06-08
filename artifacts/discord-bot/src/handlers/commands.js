@@ -38,6 +38,7 @@ import * as economyCmd       from "../commands/economy.js";
 import * as gamblingCmd      from "../commands/gambling.js";
 import * as countingCmd      from "../commands/counting.js";
 import * as collectCmd       from "../commands/collect.js";
+import * as starboardCmd     from "../commands/starboard.js";
 
 export function loadCommands(client) {
   client.commands = new Collection();
@@ -51,7 +52,7 @@ export function loadCommands(client) {
     topArtifactsCmd, banCmd, kickCmd, timeoutCmd,
     roleCmd, echoCmd, emojihuntCmd,
     warnCmd, loggingCmd, economyCmd, gamblingCmd, countingCmd,
-    collectCmd,
+    collectCmd, starboardCmd,
   ];
 
   for (const cmd of commands) {

@@ -18,7 +18,7 @@ interface LoggingCfg { enabled:boolean; channelId:string|null; events:string[]; 
 interface EcoRow     { user_id:string; guild_id:string; coins:number; theater_credits:number; fame:number; exp:number; level:number; rank:string; }
 interface CountingCfg { channelId:string; currentCount:number; highScore:number; lastUserId:string|null; failedAt:number; }
 
-type TabKey = "overview"|"embed"|"countdown"|"giveaways"|"triggers"|"guilds"|"tickets"|"afk"|"sticky"|"logging"|"welcome"|"warns"|"economy"|"counting"|"commands";
+type TabKey = "overview"|"embed"|"countdown"|"giveaways"|"triggers"|"guilds"|"tickets"|"afk"|"sticky"|"logging"|"welcome"|"warns"|"economy"|"counting"|"starboard"|"commands";
 
 /* ─── Helpers ──────────────────────────────────────────────────────────── */
 function timeAgo(ms:number) {
@@ -81,6 +81,8 @@ const COMMANDS = [
   {name:"/collect",desc:"Claim a Theater channel drop — first come, first served!",cat:"Economy"},
   {name:"/gamble bet/slots/roulette/credits",desc:"Theater Gambling Hall",cat:"Economy"},
   {name:"/emojihunt start/stop/stats",desc:"Emoji scavenger hunt (earns Theater Credits!)",cat:"Economy"},
+  {name:"/starboard setup/emoji/threshold/self/blacklist",desc:"Starboard management (like Carl-bot)",cat:"Moderation"},
+  {name:"/starboard stats/config",desc:"View starboard stats and configuration",cat:"Moderation"},
   {name:"/register /about /profile /build",desc:"Genshin Impact UID system",cat:"Genshin"},
   {name:"/cv_calc /top_artifacts /list",desc:"Artifact analysis",cat:"Genshin"},
 ];
@@ -111,13 +113,14 @@ export default function App() {
   const [stickies,setStickies]       = useState<Sticky[]>([]);
   const [loggingMap,setLoggingMap]   = useState<Record<string,LoggingCfg>>({});
   const [countingMap,setCountingMap] = useState<Record<string,CountingCfg>>({});
+  const [starboardMap,setStarboardMap] = useState<Record<string,any>>({});
   const [loading,setLoading]         = useState(true);
   const [error,setError]             = useState<string|null>(null);
   const [lastRefresh,setLastRefresh] = useState<Date|null>(null);
 
   const fetchAll = useCallback(async()=>{
     try{
-      const [s,a,t,g,gw,tr,cd,st,lg,ct]=await Promise.all([
+      const [s,a,t,g,gw,tr,cd,st,lg,ct,sb]=await Promise.all([
         fetch(`${API}/stats`).then(r=>r.json()),
         fetch(`${API}/afk`).then(r=>r.json()),
         fetch(`${API}/tickets`).then(r=>r.json()),
@@ -128,6 +131,7 @@ export default function App() {
         fetch(`${API}/stickies`).then(r=>r.json()),
         fetch(`${API}/logging`).then(r=>r.json()),
         fetch(`${API}/counting`).then(r=>r.json()),
+        fetch(`${API}/starboard`).then(r=>r.json()).catch(()=>({})),
       ]);
       setStats(s); setAfk(a);
       setOpenTickets((t as Ticket[]).filter(x=>x.open));
@@ -136,6 +140,7 @@ export default function App() {
       setStickies(Array.isArray(st)?st:[]);
       setLoggingMap(lg||{});
       setCountingMap(ct||{});
+      setStarboardMap(sb||{});
       setError(null); setLastRefresh(new Date());
     }catch{ setError("Could not reach the bot. Is it running?"); }
     finally{ setLoading(false); }
@@ -155,6 +160,7 @@ export default function App() {
     {key:"warns",     label:"Warns",       emoji:"⚠️"},
     {key:"economy",   label:"Economy",     emoji:"💠"},
     {key:"counting",  label:"Counting",    emoji:"🔢"},
+    {key:"starboard", label:"Starboard",   emoji:"⭐"},
     {key:"guilds",    label:"Guilds",      emoji:"🏰"},
     {key:"tickets",   label:"Tickets",     emoji:"🎟️"},
     {key:"afk",       label:"AFK",         emoji:"💤"},
@@ -210,6 +216,7 @@ export default function App() {
             {tab==="warns"     &&<WarnsTab guilds={guilds}/>}
             {tab==="economy"   &&<EconomyTab guilds={guilds}/>}
             {tab==="counting"  &&<CountingTab guilds={guilds} countingMap={countingMap}/>}
+            {tab==="starboard" &&<StarboardTab guilds={guilds} starboardMap={starboardMap}/>}
             {tab==="guilds"    &&<GuildsTab guilds={guilds}/>}
             {tab==="tickets"   &&<TicketsTab openTickets={openTickets}/>}
             {tab==="afk"       &&<AfkTab afk={afk}/>}
@@ -1071,6 +1078,76 @@ function CountingTab({guilds,countingMap}:{guilds:Guild[];countingMap:Record<str
             {cmd:"/counting save status",desc:"Check your saves and daily claim timer"},
             {cmd:"/counting donate <n>",desc:"Donate saves to the guild shared pool"},
             {cmd:"/counting guild-save",desc:"Use a save from the guild pool"},
+          ].map(({cmd,desc})=>(
+            <div key={cmd} className="flex items-start gap-2">
+              <code className="text-primary bg-rose-950/40 border border-rose-900/30 px-1.5 py-0.5 rounded shrink-0">{cmd}</code>
+              <span className="text-muted-foreground">{desc}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Starboard ────────────────────────────────────────────────────────── */
+function StarboardTab({guilds,starboardMap}:{guilds:Guild[];starboardMap:Record<string,any>}){
+  const guildName=(id:string)=>guilds.find(g=>g.id===id)?.name||id;
+  const entries=Object.entries(starboardMap);
+  return(
+    <div className="space-y-6">
+      <h2 className="text-lg font-bold text-primary">⭐ Starboard</h2>
+      <p className="text-sm text-muted-foreground">Messages that get enough reactions are pinned to the starboard channel. Use <code className="text-primary">/starboard setup</code> in Discord.</p>
+      {entries.length===0?(
+        <div className="rounded-xl border border-rose-900/40 bg-card p-8 text-center text-muted-foreground">
+          <div className="text-4xl mb-3">⭐</div>
+          <p>No starboards configured yet.</p>
+          <p className="text-sm mt-1">Use <code className="text-primary">/starboard setup</code> in Discord to start.</p>
+        </div>
+      ):(
+        <div className="space-y-4">
+          {entries.map(([guildId,cfg])=>{
+            const bl=(cfg.blacklist||[]).length;
+            return(
+              <div key={guildId} className="rounded-xl border border-rose-900/40 bg-card p-5">
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div>
+                    <h3 className="font-bold text-foreground">{guildName(guildId)}</h3>
+                    <p className="text-xs text-muted-foreground mt-0.5">Channel: <span className="font-mono">#{cfg.channelId}</span></p>
+                  </div>
+                  <span className={`text-xs px-2 py-1 rounded-full border ${cfg.enabled?"bg-green-950/30 text-green-300 border-green-800/40":"bg-red-950/30 text-red-300 border-red-800/40"} shrink-0`}>
+                    {cfg.enabled?"Enabled":"Disabled"}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-center mb-3">
+                  <div><p className="text-xl font-bold text-primary">{cfg.emoji||"⭐"}</p><p className="text-xs text-muted-foreground mt-0.5">Emoji</p></div>
+                  <div><p className="text-xl font-bold text-primary">{cfg.threshold||3}</p><p className="text-xs text-muted-foreground mt-0.5">Threshold</p></div>
+                  <div><p className="text-xl font-bold text-primary">{cfg.selfStar?"Yes":"No"}</p><p className="text-xs text-muted-foreground mt-0.5">Self-Star</p></div>
+                  <div><p className="text-xl font-bold text-primary">{bl}</p><p className="text-xs text-muted-foreground mt-0.5">Blacklisted</p></div>
+                </div>
+                {bl>0&&(
+                  <div className="text-xs text-muted-foreground">
+                    Blacklisted channels: <span className="font-mono">{cfg.blacklist.join(", ")}</span>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+      <div className="rounded-xl border border-rose-900/40 bg-card p-5">
+        <h3 className="font-semibold text-primary mb-3">📖 Command Reference</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+          {[
+            {cmd:"/starboard setup <channel>",desc:"Set the starboard channel"},
+            {cmd:"/starboard remove",desc:"Remove the starboard"},
+            {cmd:"/starboard emoji <emoji>",desc:"Set the star emoji (default: ⭐)"},
+            {cmd:"/starboard threshold <count>",desc:"Set minimum star count (default: 3)"},
+            {cmd:"/starboard self <enabled>",desc:"Toggle self-starring"},
+            {cmd:"/starboard blacklist <channel>",desc:"Block a channel from starboard"},
+            {cmd:"/starboard unblacklist <channel>",desc:"Unblock a channel"},
+            {cmd:"/starboard stats",desc:"View starboard statistics"},
+            {cmd:"/starboard config",desc:"View current configuration"},
           ].map(({cmd,desc})=>(
             <div key={cmd} className="flex items-start gap-2">
               <code className="text-primary bg-rose-950/40 border border-rose-900/30 px-1.5 py-0.5 rounded shrink-0">{cmd}</code>

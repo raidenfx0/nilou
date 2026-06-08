@@ -43,7 +43,7 @@ export async function getAllAfk() {
   return r.rows;
 }
 
-// ─── Sticky Messages ──────────────────────────────────────────────────────────
+// ─── Sticky Messages ─────────────────────────────────────────────────────────────────────
 export async function upsertSticky(guildId, channelId, data) {
   const { title, content, color, sticky_type } = data;
   await pool.query(
@@ -67,7 +67,7 @@ export async function getAllSticky() {
   return r.rows;
 }
 
-// ─── Tickets ──────────────────────────────────────────────────────────────────
+// ─── Tickets ──────────────────────────────────────────────────────────────────────
 export async function upsertTicket(ticket) {
   await pool.query(
     `INSERT INTO tickets (id, channel_id, guild_id, user_id, type, reason, open, opened_at, members)
@@ -89,7 +89,7 @@ export async function getAllTickets() {
   return r.rows;
 }
 
-// ─── Giveaways ────────────────────────────────────────────────────────────────
+// ─── Giveaways ──────────────────────────────────────────────────────────────────
 export async function upsertGiveaway(g) {
   await pool.query(
     `INSERT INTO giveaways (message_id, prize, winner_count, end_time, host_id, guild_id, channel_id, ended, winners, entrants)
@@ -120,7 +120,7 @@ export async function getAllTriggers() {
   return r.rows;
 }
 
-// ─── Countdowns ───────────────────────────────────────────────────────────────
+// ─── Countdowns ─────────────────────────────────────────────────────────────────
 export async function upsertCountdown(guildId, data) {
   await pool.query(
     `INSERT INTO countdowns (guild_id, name, unix_ts, description, pinned_channel_id, pinned_message_id)
@@ -134,7 +134,7 @@ export async function getAllCountdowns() {
   return r.rows;
 }
 
-// ─── Warnings ─────────────────────────────────────────────────────────────────
+// ─── Warnings ──────────────────────────────────────────────────────────────────
 export async function addWarning(guildId, userId, moderatorId, reason, points = 1) {
   const r = await pool.query(
     "INSERT INTO warnings (guild_id, user_id, moderator_id, reason, points) VALUES ($1,$2,$3,$4,$5) RETURNING *",
@@ -254,6 +254,46 @@ export async function setGuildSaves(guildId, saves) {
   );
 }
 
+// ─── Starboard ───────────────────────────────────────────────────────────────────
+export async function upsertStarboardEntry(guildId, channelId, messageId, starboardMsgId, starCount) {
+  await pool.query(
+    `INSERT INTO starboard_entries (guild_id, channel_id, message_id, starboard_msg_id, star_count)
+     VALUES ($1,$2,$3,$4,$5)
+     ON CONFLICT (guild_id, message_id) DO UPDATE SET
+       starboard_msg_id = $4,
+       star_count = $5,
+       updated_at = NOW()`,
+    [guildId, channelId, messageId, starboardMsgId, starCount]
+  );
+}
+export async function updateStarboardEntry(guildId, messageId, starCount, deleted = false) {
+  if (deleted) {
+    await pool.query("DELETE FROM starboard_entries WHERE guild_id=$1 AND message_id=$2", [guildId, messageId]);
+  } else {
+    await pool.query(
+      "UPDATE starboard_entries SET star_count=$3, updated_at=NOW() WHERE guild_id=$1 AND message_id=$2",
+      [guildId, messageId, starCount]
+    );
+  }
+}
+export async function getStarboardEntries(guildId) {
+  const r = await pool.query("SELECT * FROM starboard_entries WHERE guild_id=$1", [guildId]);
+  return r.rows;
+}
+export async function getStarboardStats(guildId) {
+  const r1 = await pool.query("SELECT COUNT(*) AS total FROM starboard_entries WHERE guild_id=$1", [guildId]);
+  const r2 = await pool.query("SELECT COALESCE(SUM(star_count),0) AS total FROM starboard_entries WHERE guild_id=$1", [guildId]);
+  const r3 = await pool.query(
+    "SELECT message_id, star_count FROM starboard_entries WHERE guild_id=$1 ORDER BY star_count DESC LIMIT 1",
+    [guildId]
+  );
+  return {
+    total: parseInt(r1.rows[0].total),
+    totalStars: parseInt(r2.rows[0].total),
+    top: r3.rows[0] ? `Message ID: ${r3.rows[0].message_id} with ${r3.rows[0].star_count} stars` : "No entries yet",
+  };
+}
+
 // ─── UID Registrations ────────────────────────────────────────────────────────
 export async function registerUidDb(discordId, uid) {
   await pool.query(
@@ -268,9 +308,10 @@ export async function getUidDb(discordId) {
 
 // ─── Startup Hydration ────────────────────────────────────────────────────────
 export async function hydrateStore(store) {
-  const [afk, sticky, tix, giveaways, trigs, cds, settings, countingRows] = await Promise.all([
+  const [afk, sticky, tix, giveaways, trigs, cds, settings, countingRows, starboardRows] = await Promise.all([
     getAllAfk(), getAllSticky(), getAllTickets(), getAllGiveaways(),
     getAllTriggers(), getAllCountdowns(), getAllGuildSettings(), getAllCountingConfigs(),
+    getStarboardEntries(),
   ]);
 
   for (const row of afk) {
@@ -316,10 +357,15 @@ export async function hydrateStore(store) {
       store.pinnedCountdowns.set(row.guild_id, { channelId: row.pinned_channel_id, messageId: row.pinned_message_id });
     }
   }
+  for (const row of starboardRows) {
+    store.starboardEntries.set(`${row.guild_id}:${row.message_id}`, {
+      guildId: row.guild_id, channelId: row.channel_id, messageId: row.message_id,
+      starboardMsgId: row.starboard_msg_id, starCount: row.star_count,
+    });
+  }
   for (const row of settings) {
-    if (row.admin_role_id)   store.adminRoles.set(row.guild_id, row.admin_role_id);
+    if (row.admin_role_id) store.adminRoles.set(row.guild_id, row.admin_role_id);
 
-    // Welcome config — full object
     if (row.welcome_channel_id) {
       store.welcomeChannels.set(row.guild_id, {
         channelId:   row.welcome_channel_id,
@@ -344,7 +390,16 @@ export async function hydrateStore(store) {
       channelId: row.log_channel_id,
       events:    JSON.parse(row.log_events || "[]"),
     });
+
+    store.starboardConfig.set(row.guild_id, {
+      enabled:   row.starboard_enabled     || false,
+      channelId: row.starboard_channel_id  || null,
+      emoji:     row.starboard_emoji       || "⭐",
+      threshold: row.starboard_threshold  || 3,
+      selfStar:  row.starboard_self_star   || false,
+      blacklist: JSON.parse(row.starboard_blacklist || "[]"),
+    });
   }
 
-  console.log(`✅ DB hydrated — afk:${afk.length} sticky:${sticky.length} tickets:${tix.length} giveaways:${giveaways.length} triggers:${trigs.length} counting:${countingRows.length}`);
+  console.log(`✅ DB hydrated — afk:${afk.length} sticky:${sticky.length} tickets:${tix.length} giveaways:${giveaways.length} triggers:${trigs.length} counting:${countingRows.length} starboard:${starboardRows.length}`);
 }

@@ -41,6 +41,7 @@ import {
   loggingConfig,
   countingChannels,
   pendingDrops,
+  starboardConfig,
 } from "./data/store.js";
 import { NILOU_RED, FOOTER_MAIN, DIVIDER } from "./theme.js";
 import { isAdmin } from "./utils/adminCheck.js";
@@ -81,28 +82,34 @@ const client = new Client({
  */
 const Nodes = [
   {
-    name: "HeavenCloud",
-    url: "89.106.84.59:4000", 
-    auth: "heavencloud.in",    
-    secure: false,             
-  },
-  {
     name: "AjieDev",
-    url: "lava-v4.ajieblogs.eu.org:80", 
-    auth: "https://dsc.gg/ajidevserver",    
-    secure: false,             
+    url: "lava-v4.ajieblogs.eu.org:80",
+    auth: "https://dsc.gg/ajidevserver",
+    secure: false,
   },
   {
     name: "Horizxon",
-    url: "lava.horizxon.studio:80", 
-    auth: "horizxon.studio",    
-    secure: false,             
+    url: "lava.horizxon.studio:80",
+    auth: "horizxon.studio",
+    secure: false,
   },
   {
     name: "devamop",
     url: "lavalink.devamop.in:443",
     auth: "DevamOP",
     secure: true,
+  },
+  {
+    name: "catfein",
+    url: "lava-v4.catfein.is-a.dev:443",
+    auth: "catfein",
+    secure: true,
+  },
+  {
+    name: "lavalinkgamer",
+    url: "lavalinkgamer.mywire.org:80",
+    auth: "lavalinkgamer",
+    secure: false,
   }
 ];
 
@@ -144,6 +151,11 @@ client.manager.on("playerStart", (player, track) => {
   if (channel) {
     channel.send(`🌸 ✦ Now performing: **${track.title}**`).catch(() => {});
   }
+  updateVoiceStatus(player, client);
+});
+
+client.manager.on("playerEmpty", (player) => {
+  updateVoiceStatus(player, client, true);
 });
 
 client.manager.on("error", (name, error) => {
@@ -157,7 +169,7 @@ loadEvents(client);
 const store = {
   afkUsers, stickyMessages, tickets, ticketConfig, giveaways,
   triggers, countdowns, pinnedCountdowns, adminRoles, welcomeChannels,
-  loggingConfig, countingChannels,
+  loggingConfig, countingChannels, starboardConfig,
 };
 
 // Hydrate all in-memory maps from PostgreSQL before login
@@ -169,7 +181,11 @@ client.once(Events.ClientReady, async (readyClient) => {
   console.log(`✅ Logged in as ${readyClient.user.tag}`);
   // Restore giveaway timers after restart (so active giveaways auto-end on time)
   restoreGiveawayTimers(readyClient);
-  botStats.startTime = Date.now(); 
+  botStats.startTime = Date.now();
+
+  // Cache custom emojis from the main server
+  const { initEmojiCache } = await import("./utils/emojiCache.js");
+  await initEmojiCache(readyClient); 
 
   const commandsJson = [...client.commands.values()].map((cmd) => cmd.data.toJSON());
   const appId = readyClient.user.id;
@@ -461,6 +477,15 @@ const server = createServer(async (req, res) => {
     if (url === "/api/counting") {
       const result = {};
       for (const [guildId, cfg] of countingChannels) {
+        result[guildId] = cfg;
+      }
+      res.end(JSON.stringify(result));
+      return;
+    }
+
+    if (url === "/api/starboard") {
+      const result = {};
+      for (const [guildId, cfg] of starboardConfig) {
         result[guildId] = cfg;
       }
       res.end(JSON.stringify(result));

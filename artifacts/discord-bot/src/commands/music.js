@@ -7,6 +7,7 @@ import {
   ComponentType,
 } from "discord.js";
 import { NILOU_RED, DIVIDER } from "../theme.js";
+import { getEmojiString } from "../utils/emojiCache.js";
 
 /**
  * Utility to format time in HH:MM:SS or MM:SS
@@ -78,7 +79,14 @@ async function updateVoiceStatus(player, client, clear = false) {
     let status = "";
     if (!clear) {
       const track = player.queue.current;
-      status = track ? `Nilou is dancing`.substring(0, 490) : "";
+      const isPlaying = player.playing && !player.paused;
+      const playEmoji = getEmojiString("NilouPlay") || "▶️";
+      const pauseEmoji = getEmojiString("NilouPause") || "⏸️";
+      const emoji = isPlaying ? playEmoji : pauseEmoji;
+      if (track) {
+        const title = track.title.substring(0, 450);
+        status = `${emoji} ${title}`.substring(0, 490);
+      }
     }
 
     await client.rest.put(`/channels/${channelId}/voice-status`, {
@@ -655,6 +663,7 @@ export async function execute(interaction) {
 
       case "pause":
         player.pause(true);
+        updateVoiceStatus(player, client);
         return interaction.editReply({
           embeds: [
             new EmbedBuilder()
@@ -667,6 +676,7 @@ export async function execute(interaction) {
 
       case "resume":
         player.pause(false);
+        updateVoiceStatus(player, client);
         return interaction.editReply({
           embeds: [
             new EmbedBuilder()
