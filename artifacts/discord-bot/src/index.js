@@ -151,7 +151,7 @@ client.manager.on("playerStart", (player, track) => {
   if (channel) {
     channel.send(`🌸 ✦ Now performing: **${track.title}**`).catch(() => {});
   }
-  updateVoiceStatus(player, client);
+  updateVoiceStatus(player, client, false, track);
 });
 
 client.manager.on("playerEmpty", (player) => {

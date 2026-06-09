@@ -71,20 +71,20 @@ export function createNowPlayingEmbed(player) {
 /**
  * Updates or Clears the Voice Channel Status
  */
-async function updateVoiceStatus(player, client, clear = false) {
+async function updateVoiceStatus(player, client, clear = false, track = null) {
   try {
     const channelId = player.voiceId;
     if (!channelId) return;
 
     let status = "";
     if (!clear) {
-      const track = player.queue.current;
+      const currentTrack = track || player.queue.current;
       const isPlaying = player.playing && !player.paused;
-      const playEmoji = getEmojiString("NilouPlay") || "▶️";
-      const pauseEmoji = getEmojiString("NilouPause") || "⏸️";
+      const playEmoji = getEmojiString("playbutton") || "▶️";
+      const pauseEmoji = getEmojiString("pausebutton") || "⏸️";
       const emoji = isPlaying ? playEmoji : pauseEmoji;
-      if (track) {
-        const title = track.title.substring(0, 450);
+      if (currentTrack) {
+        const title = currentTrack.title.substring(0, 450);
         status = `${emoji} ${title}`.substring(0, 490);
       }
     }

@@ -65,21 +65,35 @@ export async function execute(reaction, user) {
   const entryKey = `${guildId}:${sb.emoji}:${messageId}`;
   const existing = starboardEntries.get(entryKey);
 
+  let description = message.content ? message.content.slice(0, 2048) : "";
+
+  if (message.attachments.size > 0) {
+    const first = message.attachments.first();
+    if (first.contentType?.startsWith("image/")) {
+      // image will be set as embed image
+    } else if (first.contentType?.startsWith("video/")) {
+      description += (description ? "\n\n" : "") + `[Video](${first.url})`;
+    }
+  }
+
   const embed = new EmbedBuilder()
     .setColor(0xFFD700)
-    .setAuthor({ name: message.author.tag, iconURL: message.author.displayAvatarURL({ dynamic: true }) })
-    .setDescription(message.content ? message.content.slice(0, 2048) : "")
-    .addFields(
-      { name: "Source", value: `[Jump to message](https://discord.com/channels/${guildId}/${message.channelId}/${messageId})`, inline: true },
-      { name: "Channel", value: `<#${message.channelId}>`, inline: true },
-    )
+    .setAuthor({ name: message.author.tag, iconURL: message.author.displayAvatarURL({ dynamic: true }) });
+
+  if (description) {
+    embed.setDescription(description);
+  }
+
+  embed.addFields(
+    { name: "Source", value: `[Jump to message](https://discord.com/channels/${guildId}/${message.channelId}/${messageId})`, inline: true },
+    { name: "Channel", value: `<#${message.channelId}>`, inline: true },
+  )
     .setFooter({ text: `${message.author.id} • ${messageId}` })
     .setTimestamp(message.createdAt);
 
   if (message.attachments.size > 0) {
     const first = message.attachments.first();
     if (first.contentType?.startsWith("image/")) embed.setImage(first.url);
-    else if (first.contentType?.startsWith("video/")) embed.setDescription((embed.data.description || "") + `\n\n[Video](${first.url})`);
   }
   if (message.embeds?.length > 0 && message.embeds[0].image?.url) {
     embed.setImage(message.embeds[0].image.url);

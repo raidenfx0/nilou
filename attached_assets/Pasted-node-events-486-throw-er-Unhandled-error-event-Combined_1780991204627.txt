@@ -1,0 +1,46 @@
+node:events:486
+      throw er; // Unhandled 'error' event
+      ^
+
+CombinedError: Received one or more errors
+    at _UnionValidator.handle (/home/runner/workspace/node_modules/.pnpm/@sapphire+shapeshift@4.0.0/node_modules/@sapphire/shapeshift/src/validators/UnionValidator.ts:9:57)
+    at _UnionValidator.parse (/home/runner/workspace/node_modules/.pnpm/@sapphire+shapeshift@4.0.0/node_modules/@sapphire/shapeshift/src/validators/BaseValidator.ts:126:2)
+    at EmbedBuilder.setDescription (/home/runner/workspace/node_modules/.pnpm/@discordjs+builders@1.14.1/node_modules/@discordjs/builders/src/messages/embed/Embed.ts:223:24)
+    at Module.execute (file:///home/runner/workspace/artifacts/discord-bot/src/events/messageReactionAdd.js:71:6)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+Emitted 'error' event on Client instance at:
+    at emitUnhandledRejectionOrErr (node:events:391:10)
+    at process.processTicksAndRejections (node:internal/process/task_queues:91:21) {
+  errors: [
+    ExpectedValidationError: Expected values to be equals
+        at _LiteralValidator.handle (/home/runner/workspace/node_modules/.pnpm/@sapphire+shapeshift@4.0.0/node_modules/@sapphire/shapeshift/src/validators/LiteralValidator.ts:23:21)
+        at _LiteralValidator.run (/home/runner/workspace/node_modules/.pnpm/@sapphire+shapeshift@4.0.0/node_modules/@sapphire/shapeshift/src/validators/BaseValidator.ts:109:3)
+        at _UnionValidator.handle (/home/runner/workspace/node_modules/.pnpm/@sapphire+shapeshift@4.0.0/node_modules/@sapphire/shapeshift/src/validators/UnionValidator.ts:126:29)
+        at _UnionValidator.parse (/home/runner/workspace/node_modules/.pnpm/@sapphire+shapeshift@4.0.0/node_modules/@sapphire/shapeshift/src/validators/BaseValidator.ts:126:2)
+        at EmbedBuilder.setDescription (/home/runner/workspace/node_modules/.pnpm/@discordjs+builders@1.14.1/node_modules/@discordjs/builders/src/messages/embed/Embed.ts:223:24)
+        at Module.execute (file:///home/runner/workspace/artifacts/discord-bot/src/events/messageReactionAdd.js:71:6)
+        at process.processTicksAndRejections (node:internal/process/task_queues:103:5) {
+      validator: 's.literal(V)',
+      given: '',
+      expected: null
+    },
+    ExpectedConstraintError: Invalid string length
+        at Object.run (/home/runner/workspace/node_modules/.pnpm/@sapphire+shapeshift@4.0.0/node_modules/@sapphire/shapeshift/src/constraints/StringConstraints.ts:51:1)
+        at _StringValidator.run (/home/runner/workspace/node_modules/.pnpm/@sapphire+shapeshift@4.0.0/node_modules/@sapphire/shapeshift/src/validators/BaseValidator.ts:117:13)
+        at _UnionValidator.handle (/home/runner/workspace/node_modules/.pnpm/@sapphire+shapeshift@4.0.0/node_modules/@sapphire/shapeshift/src/validators/UnionValidator.ts:126:29)
+        at _UnionValidator.parse (/home/runner/workspace/node_modules/.pnpm/@sapphire+shapeshift@4.0.0/node_modules/@sapphire/shapeshift/src/validators/BaseValidator.ts:126:2)
+        at EmbedBuilder.setDescription (/home/runner/workspace/node_modules/.pnpm/@discordjs+builders@1.14.1/node_modules/@discordjs/builders/src/messages/embed/Embed.ts:223:24)
+        at Module.execute (file:///home/runner/workspace/artifacts/discord-bot/src/events/messageReactionAdd.js:71:6)
+        at process.processTicksAndRejections (node:internal/process/task_queues:103:5) {
+      constraint: 's.string().lengthGreaterThanOrEqual()',
+      given: '',
+      expected: 'expected.length >= 1'
+    }
+  ]
+}
+
+Node.js v24.13.0
+/home/runner/workspace/artifacts/discord-bot:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @workspace/discord-bot@0.0.0 start: `node --enable-source-maps src/index.js`
+Exit status 1
+~/workspace$ 
