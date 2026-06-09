@@ -5,7 +5,7 @@ import {
 import { NILOU_RED, FOOTER_MAIN, DIVIDER } from "../theme.js";
 import { isAdmin, denyAdmin } from "../utils/adminCheck.js";
 import { giveaways } from "../data/store.js";
-import { upsertGiveaway } from "../db/index.js";
+import { upsertGiveaway, getUserActivity } from "../db/index.js";
 
 function parseDuration(str) {
   const match = str.match(/^(\d+)(s|m|h|d)$/i);
@@ -19,6 +19,9 @@ function buildGiveawayEmbed(gw) {
   const endTs   = Math.floor(gw.endTime / 1000);
   const ended   = Date.now() >= gw.endTime;
   const count   = gw.entrants instanceof Set ? gw.entrants.size : (gw.entrants?.length ?? 0);
+  const entryText = gw.roleBonus && Object.keys(gw.roleBonus).length > 0
+    ? `Entries: **${count}** (role bonus active)`
+    : `Entries: **${count}**`;
 
   return new EmbedBuilder()
     .setColor(NILOU_RED)
@@ -27,9 +30,10 @@ function buildGiveawayEmbed(gw) {
       `${DIVIDER}\n` +
       `Click **Enter Giveaway** below to enter!\n\n` +
       `Winners: **${gw.winnerCount}**\n` +
-      `Entries: **${count}**\n` +
+      entryText + `\n` +
       `Hosted by: <@${gw.hostId}>\n` +
       (ended ? `Status: **Ended**` : `Ends: <t:${endTs}:R> (<t:${endTs}:F>)`) +
+      (gw.minDays > 0 ? `\n*Requirement: Active in last ${gw.minDays} day(s)*` : "") +
       `\n${DIVIDER}`
     )
     .setFooter({ text: ended ? "🌸 Giveaway Ended" : "🌸 Click the button to enter!" })
@@ -60,6 +64,9 @@ export const data = new SlashCommandBuilder()
       .addStringOption(o => o.setName("duration").setDescription("Duration e.g. 1h, 30m, 2d").setRequired(true))
       .addIntegerOption(o => o.setName("winners").setDescription("Number of winners").setMinValue(1).setMaxValue(20))
       .addChannelOption(o => o.setName("channel").setDescription("Channel to post in"))
+      .addRoleOption(o => o.setName("bonus_role").setDescription("Role that gets bonus entries"))
+      .addIntegerOption(o => o.setName("bonus_entries").setDescription("Number of extra entries for bonus role").setMinValue(1).setMaxValue(10))
+      .addIntegerOption(o => o.setName("min_days").setDescription("Min days of activity to join (0 = none)").setMinValue(0).setMaxValue(30))
   )
   .addSubcommand(sub =>
     sub.setName("end").setDescription("End a giveaway early (admin only)")
@@ -81,6 +88,9 @@ export async function execute(interaction) {
     const durationStr = interaction.options.getString("duration");
     const winnerCount = interaction.options.getInteger("winners") || 1;
     const channel     = interaction.options.getChannel("channel") || interaction.channel;
+    const bonusRole   = interaction.options.getRole("bonus_role");
+    const bonusEntries = interaction.options.getInteger("bonus_entries") || 1;
+    const minDays     = interaction.options.getInteger("min_days") || 0;
 
     const duration = parseDuration(durationStr);
     if (!duration) return interaction.reply({ content: "❌ Invalid duration. Use `1h`, `30m`, `2d`, `10s`.", ephemeral: true });
@@ -96,6 +106,8 @@ export async function execute(interaction) {
       ended: false,
       entrants: new Set(),
       winners: [],
+      roleBonus: bonusRole ? { [bonusRole.id]: bonusEntries } : {},
+      minDays: minDays,
     };
 
     const embed = buildGiveawayEmbed(gwData);
@@ -110,7 +122,7 @@ export async function execute(interaction) {
     gwData.timer = setTimeout(() => endGiveaway(interaction.client, msg.id), duration);
     giveaways.set(msg.id, gwData);
 
-    await interaction.editReply({ content: `🌸 Giveaway started in ${channel}! 🎊` });
+    await interaction.editReply({ content: `🌸 Giveaway started in ${channel}! 🎊` + (bonusRole ? ` Bonus role: ${bonusRole.name} (+${bonusEntries} entries)` : "") + (minDays > 0 ? ` Requires ${minDays} day(s) activity.` : "") });
     return;
   }
 
@@ -164,6 +176,16 @@ export async function handleGiveawayButton(interaction) {
     if (gw.entrants.has(userId)) {
       return interaction.reply({ content: "You are already entered in this giveaway! Use Leave to withdraw.", ephemeral: true });
     }
+
+    // Check activity requirement
+    if (gw.minDays > 0) {
+      const since = Date.now() - (gw.minDays * 86400000);
+      const activity = await getUserActivity(gw.guildId, userId, since);
+      if (!activity || activity.message_count < 1) {
+        return interaction.reply({ content: `❌ You need to be active in the last ${gw.minDays} day(s) to join this giveaway.`, ephemeral: true });
+      }
+    }
+
     gw.entrants.add(userId);
     giveaways.set(messageId, gw);
     await upsertGiveaway({ ...gw, entrants: [...gw.entrants] });
@@ -203,8 +225,26 @@ export async function endGiveaway(client, messageId) {
     const channel = await guild.channels.fetch(gw.channelId);
     const msg     = await channel.messages.fetch(messageId);
 
-    const eligible = [...(gw.entrants instanceof Set ? gw.entrants : new Set(gw.entrants))]
+    let eligible = [...(gw.entrants instanceof Set ? gw.entrants : new Set(gw.entrants))]
       .filter(id => id !== client.user.id);
+
+    // Apply role bonus: expand eligible array with duplicate entries for bonus roles
+    if (gw.roleBonus && Object.keys(gw.roleBonus).length > 0) {
+      const guildMember = await guild.members.fetch();
+      const expanded = [];
+      for (const id of eligible) {
+        const member = guildMember.get(id);
+        expanded.push(id);
+        if (member) {
+          for (const [roleId, bonus] of Object.entries(gw.roleBonus)) {
+            if (member.roles.cache.has(roleId)) {
+              for (let i = 0; i < bonus; i++) expanded.push(id);
+            }
+          }
+        }
+      }
+      eligible = expanded;
+    }
 
     const embed = buildGiveawayEmbed(gw);
 
@@ -218,11 +258,13 @@ export async function endGiveaway(client, messageId) {
 
     const shuffled    = eligible.sort(() => Math.random() - 0.5);
     const winners     = shuffled.slice(0, Math.min(gw.winnerCount, eligible.length));
-    const winMentions = winners.map(id => `<@${id}>`).join(", ");
+    // Deduplicate winners for display
+    const uniqueWinners = [...new Set(winners)];
+    const winMentions = uniqueWinners.map(id => `<@${id}>`).join(", ");
 
     embed.setDescription(
       `${DIVIDER}\n` +
-      `Winner${winners.length > 1 ? "s" : ""}: ${winMentions}\n\n` +
+      `Winner${uniqueWinners.length > 1 ? "s" : ""}: ${winMentions}\n\n` +
       `Prize: **${gw.prize}**\n` +
       `Total entries: ${eligible.length}\n` +
       `${DIVIDER}`
@@ -231,7 +273,7 @@ export async function endGiveaway(client, messageId) {
     await msg.edit({ embeds: [embed], components: [buildGiveawayRow(messageId, true)] });
     await channel.send(`🎊 Congratulations ${winMentions}! You won **${gw.prize}**! Contact <@${gw.hostId}> to claim. 🌸`);
 
-    gw.winners = winners;
+    gw.winners = uniqueWinners;
     giveaways.set(messageId, gw);
     await upsertGiveaway({ ...gw, entrants: [...gw.entrants] });
   } catch (err) {
@@ -256,8 +298,26 @@ async function rerollGiveaway(client, messageId, fallbackChannel) {
   const gw = giveaways.get(messageId);
   if (!gw) return;
 
-  const eligible = [...(gw.entrants instanceof Set ? gw.entrants : new Set(gw.entrants))]
+  let eligible = [...(gw.entrants instanceof Set ? gw.entrants : new Set(gw.entrants))]
     .filter(id => id !== client.user.id);
+
+  if (gw.roleBonus && Object.keys(gw.roleBonus).length > 0) {
+    const guild = await client.guilds.fetch(gw.guildId);
+    const guildMember = await guild.members.fetch();
+    const expanded = [];
+    for (const id of eligible) {
+      const member = guildMember.get(id);
+      expanded.push(id);
+      if (member) {
+        for (const [roleId, bonus] of Object.entries(gw.roleBonus)) {
+          if (member.roles.cache.has(roleId)) {
+            for (let i = 0; i < bonus; i++) expanded.push(id);
+          }
+        }
+      }
+    }
+    eligible = expanded;
+  }
 
   try {
     const guild   = await client.guilds.fetch(gw.guildId);
@@ -268,8 +328,9 @@ async function rerollGiveaway(client, messageId, fallbackChannel) {
       return;
     }
     const winners     = eligible.sort(() => Math.random() - 0.5).slice(0, Math.min(gw.winnerCount, eligible.length));
-    const winMentions = winners.map(id => `<@${id}>`).join(", ");
-    await (fallbackChannel || channel).send(`🎊 Reroll! New winner${winners.length > 1 ? "s" : ""}: ${winMentions}! 🌸`);
+    const uniqueWinners = [...new Set(winners)];
+    const winMentions = uniqueWinners.map(id => `<@${id}>`).join(", ");
+    await (fallbackChannel || channel).send(`🎊 Reroll! New winner${uniqueWinners.length > 1 ? "s" : ""}: ${winMentions}! 🌸`);
   } catch (err) {
     console.error("Giveaway reroll error:", err.message);
   }

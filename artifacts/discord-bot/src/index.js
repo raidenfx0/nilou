@@ -42,12 +42,14 @@ import {
   countingChannels,
   pendingDrops,
   starboards,
+  starboardEntries,
 } from "./data/store.js";
 import { NILOU_RED, FOOTER_MAIN, DIVIDER } from "./theme.js";
 import { isAdmin } from "./utils/adminCheck.js";
 import { buildCountdownEmbed } from "./commands/countdown.js";
 import { openTicket, closeTicket, closeEmbed } from "./commands/ticket.js";
 import { handleGiveawayButton, restoreGiveawayTimers } from "./commands/giveaway.js";
+import { updateVoiceStatus } from "./commands/music.js";
 import {
   hydrateStore,
   upsertTrigger,
@@ -55,6 +57,8 @@ import {
   getAllWarnings,
   upsertGuildSettings,
   getLeaderboard,
+  ensureTables,
+  recordMusicPlay,
   pool,
 } from "./db/index.js";
 
@@ -151,7 +155,20 @@ client.manager.on("playerStart", (player, track) => {
   if (channel) {
     channel.send(`🌸 ✦ Now performing: **${track.title}**`).catch(() => {});
   }
+  // Ensure VC status updates even when autoplay / next track starts
   updateVoiceStatus(player, client, false, track);
+  // Record FM Bot-style play
+  const requester = track?.requester?.id;
+  const guildId = player?.guildId;
+  if (requester && guildId) {
+    recordMusicPlay(requester, guildId, track.title, track.uri, track.author, track.duration || track.length)
+      .catch(err => console.error("❌ Music play record failed:", err.message));
+  }
+});
+
+client.manager.on("playerEnd", (player, track) => {
+  // Clear between tracks so the next playerStart has a clean slate
+  updateVoiceStatus(player, client, true);
 });
 
 client.manager.on("playerEmpty", (player) => {
@@ -169,11 +186,14 @@ loadEvents(client);
 const store = {
   afkUsers, stickyMessages, tickets, ticketConfig, giveaways,
   triggers, countdowns, pinnedCountdowns, adminRoles, welcomeChannels,
-  loggingConfig, countingChannels, starboards,
+  loggingConfig, countingChannels, starboards, starboardEntries,
 };
 
 // Hydrate all in-memory maps from PostgreSQL before login
 hydrateStore(store).catch(err => console.error("❌ DB hydration failed:", err));
+
+// Auto-create new tables on startup
+ensureTables().catch(err => console.error("❌ Table creation failed:", err));
 
 const rest = new REST().setToken(TOKEN);
 

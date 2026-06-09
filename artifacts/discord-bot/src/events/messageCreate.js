@@ -1,7 +1,7 @@
 import { Events, EmbedBuilder, AttachmentBuilder } from "discord.js";
 import { stickyMessages, afkUsers, triggers, countingChannels, pendingDrops } from "../data/store.js";
 import { NILOU_RED, FOOTER_STICKY, DIVIDER } from "../theme.js";
-import { getEconomy, updateEconomy, upsertCountingConfig, updateStickyLastMessage } from "../db/index.js";
+import { getEconomy, updateEconomy, upsertCountingConfig, updateStickyLastMessage, upsertUserActivity } from "../db/index.js";
 import { createLevelCard } from "../utils/levelCard.js";
 
 const chatCooldowns   = new Map(); // `${guildId}:${userId}` → timestamp
@@ -58,6 +58,9 @@ export async function execute(message) {
 
   const { guildId, channelId } = message;
   const userId = message.author.id;
+
+  // ─── User activity tracking (giveaway eligibility) ─────────────────────────────
+  upsertUserActivity(guildId, userId, Date.now()).catch(() => {});
 
   // ─── AFK clear ──────────────────────────────────────────────────────────────
   const afkKey = `${guildId}:${userId}`;

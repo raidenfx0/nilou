@@ -100,16 +100,26 @@ export async function execute(reaction, user) {
   }
 
   const content = `${starEmoji} **${count}** ${sb.emoji} <#${message.channelId}>`;
+  let videoUrl = "";
+  if (message.attachments.size > 0) {
+    const first = message.attachments.first();
+    if (first.contentType?.startsWith("video/")) {
+      videoUrl = first.url;
+    }
+  }
+  if (message.embeds?.length > 0 && message.embeds[0].video?.url) {
+    videoUrl = message.embeds[0].video.url;
+  }
 
   if (existing) {
     const starboardMsg = await starboardChannel.messages.fetch(existing.starboardMsgId).catch(() => null);
     if (starboardMsg) {
-      await starboardMsg.edit({ content, embeds: [embed] });
+      await starboardMsg.edit({ content: videoUrl ? `${content}\n${videoUrl}` : content, embeds: [embed] });
       await updateStarboardEntry(guildId, sb.id, messageId, count);
       starboardEntries.set(entryKey, { ...existing, starCount: count });
     }
   } else {
-    const starboardMsg = await starboardChannel.send({ content, embeds: [embed] }).catch(() => null);
+    const starboardMsg = await starboardChannel.send({ content: videoUrl ? `${content}\n${videoUrl}` : content, embeds: [embed] }).catch(() => null);
     if (starboardMsg) {
       starboardEntries.set(entryKey, {
         guildId,

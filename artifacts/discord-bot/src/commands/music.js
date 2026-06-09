@@ -8,6 +8,7 @@ import {
 } from "discord.js";
 import { NILOU_RED, DIVIDER } from "../theme.js";
 import { getEmojiString } from "../utils/emojiCache.js";
+import { recordMusicPlay as dbRecordMusicPlay, getUserPlayStats, getGuildPlayStats } from "../db/index.js";
 
 /**
  * Utility to format time in HH:MM:SS or MM:SS
@@ -71,7 +72,7 @@ export function createNowPlayingEmbed(player) {
 /**
  * Updates or Clears the Voice Channel Status
  */
-async function updateVoiceStatus(player, client, clear = false, track = null) {
+export async function updateVoiceStatus(player, client, clear = false, track = null) {
   try {
     const channelId = player.voiceId;
     if (!channelId) return;
@@ -93,7 +94,15 @@ async function updateVoiceStatus(player, client, clear = false, track = null) {
       body: { status: status },
     });
   } catch (err) {
-    // Silently fail if permissions are missing
+    console.error("❌ Voice status update failed:", err.message || err);
+  }
+}
+
+export async function recordMusicPlay(userId, guildId, trackTitle, trackUri, artist, duration) {
+  try {
+    await dbRecordMusicPlay(userId, guildId, trackTitle, trackUri, artist, duration);
+  } catch (err) {
+    console.error("❌ Music play record failed:", err.message);
   }
 }
 
@@ -252,6 +261,12 @@ export const data = new SlashCommandBuilder()
   )
   .addSubcommand((sub) =>
     sub.setName("247").setDescription("Keep Nilou on stage indefinitely"),
+  )
+  .addSubcommand((sub) =>
+    sub.setName("stats").setDescription("Your music listening stats")
+  )
+  .addSubcommand((sub) =>
+    sub.setName("toptracks").setDescription("Top tracks in this server")
   );
 
 export async function execute(interaction) {
@@ -724,6 +739,36 @@ export async function execute(interaction) {
               ),
           ],
         });
+      }
+
+      case "stats": {
+        const stats = await getUserPlayStats(member.user.id, guild.id, 10);
+        const embed = new EmbedBuilder()
+          .setColor(NILOU_RED)
+          .setTitle("🎵 ✦ Your Music Stats")
+          .setDescription(
+            `Total plays: **${stats.total}**\n\n` +
+            (stats.top.length > 0
+              ? `**Top tracks:**\n${stats.top.map((t, i) => `${i + 1}. ${t.track_title} — ${t.plays} play${t.plays > 1 ? "s" : ""}`).join("\n")}`
+              : "No plays recorded yet! Start a performance with `/music play`~")
+          )
+          .setFooter({ text: "FM Bot-style tracking ✦ Nilou Grand Theater" });
+        return interaction.editReply({ embeds: [embed] });
+      }
+
+      case "toptracks": {
+        const stats = await getGuildPlayStats(guild.id, 10);
+        const embed = new EmbedBuilder()
+          .setColor(NILOU_RED)
+          .setTitle("🎵 ✦ Server Top Tracks")
+          .setDescription(
+            `Total plays: **${stats.total}**\n\n` +
+            (stats.top.length > 0
+              ? `**Top tracks:**\n${stats.top.map((t, i) => `${i + 1}. ${t.track_title} — ${t.plays} plays · ${t.unique_listeners} listener${t.unique_listeners > 1 ? "s" : ""}`).join("\n")}`
+              : "No plays recorded yet! Start a performance with `/music play`~")
+          )
+          .setFooter({ text: "FM Bot-style tracking ✦ Nilou Grand Theater" });
+        return interaction.editReply({ embeds: [embed] });
       }
 
       default:

@@ -104,6 +104,58 @@ export async function getAllGiveaways() {
   return r.rows;
 }
 
+// ─── User Activity ───────────────────────────────────────────────────────────────────
+export async function upsertUserActivity(guildId, userId, timestamp) {
+  await pool.query(
+    `INSERT INTO user_activity (guild_id, user_id, last_active, message_count)
+     VALUES ($1, $2, $3, 1)
+     ON CONFLICT (guild_id, user_id) DO UPDATE SET last_active = $3, message_count = user_activity.message_count + 1`,
+    [guildId, userId, timestamp]
+  );
+}
+export async function getUserActivity(guildId, userId, since) {
+  const r = await pool.query(
+    `SELECT * FROM user_activity WHERE guild_id = $1 AND user_id = $2 AND last_active >= $3`,
+    [guildId, userId, since]
+  );
+  return r.rows[0] || null;
+}
+
+// ─── Music Plays ───────────────────────────────────────────────────────────────────
+export async function recordMusicPlay(userId, guildId, trackTitle, trackUri, artist, duration) {
+  await pool.query(
+    `INSERT INTO music_plays (user_id, guild_id, track_title, track_uri, artist, duration, played_at)
+     VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+    [userId, guildId, trackTitle, trackUri, artist, duration]
+  );
+}
+export async function getUserPlayStats(userId, guildId, limit = 50) {
+  const total = await pool.query(
+    `SELECT COUNT(*) as total FROM music_plays WHERE user_id = $1 AND guild_id = $2`,
+    [userId, guildId]
+  );
+  const top = await pool.query(
+    `SELECT track_title, artist, COUNT(*) as plays, MAX(played_at) as last_played
+     FROM music_plays WHERE user_id = $1 AND guild_id = $2
+     GROUP BY track_title, artist ORDER BY plays DESC, last_played DESC LIMIT $3`,
+    [userId, guildId, limit]
+  );
+  return { total: parseInt(total.rows[0].total, 10), top: top.rows };
+}
+export async function getGuildPlayStats(guildId, limit = 50) {
+  const total = await pool.query(
+    `SELECT COUNT(*) as total FROM music_plays WHERE guild_id = $1`,
+    [guildId]
+  );
+  const top = await pool.query(
+    `SELECT track_title, artist, COUNT(*) as plays, COUNT(DISTINCT user_id) as unique_listeners
+     FROM music_plays WHERE guild_id = $1
+     GROUP BY track_title, artist ORDER BY plays DESC LIMIT $2`,
+    [guildId, limit]
+  );
+  return { total: parseInt(total.rows[0].total, 10), top: top.rows };
+}
+
 // ─── Triggers ─────────────────────────────────────────────────────────────────────────────────
 export async function upsertTrigger(guildId, phrase, response, exact) {
   await pool.query(
@@ -228,6 +280,40 @@ export async function getAllCountingConfigs() {
   const r = await pool.query("SELECT * FROM counting_config");
   return r.rows;
 }
+
+export async function ensureTables() {
+  const schema = `
+    CREATE TABLE IF NOT EXISTS user_activity (
+      guild_id VARCHAR(50) NOT NULL,
+      user_id VARCHAR(50) NOT NULL,
+      last_active BIGINT NOT NULL DEFAULT 0,
+      message_count INT NOT NULL DEFAULT 0,
+      PRIMARY KEY (guild_id, user_id)
+    );
+    CREATE TABLE IF NOT EXISTS music_plays (
+      id SERIAL PRIMARY KEY,
+      user_id VARCHAR(50) NOT NULL,
+      guild_id VARCHAR(50) NOT NULL,
+      track_title VARCHAR(500) NOT NULL,
+      track_uri VARCHAR(500),
+      artist VARCHAR(500),
+      duration BIGINT,
+      played_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_music_plays_user ON music_plays(user_id, guild_id);
+    CREATE INDEX IF NOT EXISTS idx_music_plays_guild ON music_plays(guild_id);
+  `;
+  await pool.query(schema);
+  // Add missing economy columns gracefully
+  try { await pool.query("ALTER TABLE economy ADD COLUMN IF NOT EXISTS last_work BIGINT DEFAULT 0"); } catch {}
+  try { await pool.query("ALTER TABLE economy ADD COLUMN IF NOT EXISTS last_perform BIGINT DEFAULT 0"); } catch {}
+  try { await pool.query("ALTER TABLE economy ADD COLUMN IF NOT EXISTS last_daily BIGINT DEFAULT 0"); } catch {}
+  try { await pool.query("ALTER TABLE economy ADD COLUMN IF NOT EXISTS daily_streak INT DEFAULT 0"); } catch {}
+  try { await pool.query("ALTER TABLE economy ADD COLUMN IF NOT EXISTS rank VARCHAR(50) DEFAULT 'Stagehand'"); } catch {}
+  try { await pool.query("ALTER TABLE economy ADD COLUMN IF NOT EXISTS inventory TEXT DEFAULT '[]'"); } catch {}
+  console.log("\u2705 Auto-created user_activity and music_plays tables; economy columns verified");
+}
+
 export async function getCountingSaves(guildId, userId) {
   const r = await pool.query("SELECT * FROM counting_saves WHERE guild_id=$1 AND user_id=$2", [guildId, userId]);
   return r.rows[0] || { guild_id: guildId, user_id: userId, saves: 0, last_daily_claim: 0 };
