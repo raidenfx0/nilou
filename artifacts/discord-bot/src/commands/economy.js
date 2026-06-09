@@ -2,6 +2,7 @@ import { SlashCommandBuilder, EmbedBuilder, AttachmentBuilder } from "discord.js
 import { NILOU_RED, FOOTER_MAIN, DIVIDER } from "../theme.js";
 import { getEconomy, updateEconomy, getLeaderboard } from "../db/index.js";
 import { createLevelCard } from "../utils/levelCard.js";
+import { getEmojiString } from "../utils/emojiCache.js";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const RANKS = [
@@ -36,6 +37,7 @@ const SHOP_ITEMS = [
 
 function getRank(level) { return [...RANKS].reverse().find(r => level >= r.minLevel)?.name || "Stagehand"; }
 function rand(min, max)  { return Math.floor(Math.random() * (max - min + 1)) + min; }
+const E = (name, fallback) => getEmojiString(name) || fallback;
 function getLevelFromExp(exp) {
   let lv = 1;
   for (let i = 1; i < LEVELS.length; i++) {
@@ -107,15 +109,15 @@ export async function execute(interaction) {
       .setThumbnail(interaction.user.displayAvatarURL({ dynamic: true }))
       .setDescription(
         `${DIVIDER}\n` +
-        `💠 Coins: **${fmt(eco.coins)}**\n` +
+        `${E("NilouRich", "💠")} Coins: **${fmt(eco.coins)}**\n` +
         `🎟️ Theater Credits: **${fmt(eco.theater_credits)}**\n` +
-        `🎭 Fame: **${fmt(eco.fame)}**\n` +
+        `${E("NilouDance", "🎭")} Fame: **${fmt(eco.fame)}**\n` +
         `${DIVIDER}`
       )
       .addFields(
-        { name: "⭐ Level", value: `**${lv}** — ${getRank(lv)}`, inline: true },
+        { name: `${E("NilouHmm", "⭐")} Level`, value: `**${lv}** — ${getRank(lv)}`, inline: true },
         { name: "📈 EXP Progress", value: `${fmt(eco.exp)} / ${fmt(nextExp)}\n\`${bar}\` ${progress}%`, inline: false },
-        { name: "🔥 Daily Streak", value: `**${eco.daily_streak || 0}** days`, inline: true },
+        { name: `${E("NilouBlush", "🔥")} Daily Streak`, value: `**${eco.daily_streak || 0}** days`, inline: true },
       )
       .setFooter(FOOTER_MAIN).setTimestamp();
     return interaction.reply({ embeds: [embed] });
@@ -167,21 +169,21 @@ export async function execute(interaction) {
     const milestone  = milestones[streak] || "";
 
     const embed = new EmbedBuilder().setColor(NILOU_RED)
-      .setTitle("✦ Daily Theater Reward 🌸")
+      .setTitle(`✦ Daily Theater Reward ${E("NilouDance", "🌸")}`)
       .setThumbnail(interaction.user.displayAvatarURL({ dynamic: true }))
       .setDescription(
         `${DIVIDER}\n` +
         `**${interaction.user.username}** collected their daily reward!\n\n` +
-        `💠 **+${fmt(coinsEarned)}** Coins\n` +
+        `${E("NilouRich", "💠")} **+${fmt(coinsEarned)}** Coins\n` +
         `🎟️ **+${tcEarned}** Theater Credits\n` +
-        `⭐ **+${expEarned}** EXP\n` +
-        (streakBonus > 0 ? `\n✨ **Streak Bonus:** +${Math.round(streakBonus * 100)}%\n` : "") +
+        `${E("NilouHmm", "⭐")} **+${expEarned}** EXP\n` +
+        (streakBonus > 0 ? `\n${E("NilouCheer", "✨")} **Streak Bonus:** +${Math.round(streakBonus * 100)}%\n` : "") +
         (milestone ? `\n${milestone}\n` : "") +
         `${DIVIDER}`
       )
       .addFields(
-        { name: "🔥 Streak", value: `**${streak}** day${streak !== 1 ? "s" : ""}`, inline: true },
-        { name: "💰 New Balance", value: `**${fmt(newCoins)}** 💠`, inline: true },
+        { name: `${E("NilouBlush", "🔥")} Streak`, value: `**${streak}** day${streak !== 1 ? "s" : ""}`, inline: true },
+        { name: `${E("NilouRich", "💰")} New Balance`, value: `**${fmt(newCoins)}**`, inline: true },
       )
       .setFooter(FOOTER_MAIN).setTimestamp();
 
@@ -254,15 +256,15 @@ export async function execute(interaction) {
     });
 
     const embed = new EmbedBuilder().setColor(NILOU_RED)
-      .setTitle("✦ Performance Complete! 🎭")
+      .setTitle(`✦ Performance Complete! ${E("NilouDance", "🎭")}`)
       .setDescription(
         `${DIVIDER}\n` +
-        `🌸 ${interaction.user} ${perf}!\n\n` +
-        `💠 **+${fmt(coins)}** Coins${hasGrace ? " *(×2 Grace!)*" : ""}\n` +
+        `${E("NilouDance", "🌸")} ${interaction.user} ${perf}!\n\n` +
+        `${E("NilouRich", "💠")} **+${fmt(coins)}** Coins${hasGrace ? " *(×2 Grace!)*" : ""}\n` +
         `🎟️ **+${tc}** Theater Credits\n` +
-        `🎭 **+${fame}** Fame\n` +
-        `⭐ **+${exp}** EXP\n\n` +
-        `Balance: **${fmt(Number(eco.coins) + coins)}** 💠 · Level **${newLevel}** ${getRank(newLevel)}` +
+        `${E("NilouDance", "🎭")} **+${fame}** Fame\n` +
+        `${E("NilouHmm", "⭐")} **+${exp}** EXP\n\n` +
+        `Balance: **${fmt(Number(eco.coins) + coins)}** · Level **${newLevel}** ${getRank(newLevel)}` +
         `\n${DIVIDER}`
       )
       .setFooter(FOOTER_MAIN).setTimestamp();
@@ -320,12 +322,12 @@ export async function execute(interaction) {
     });
 
     const embed = new EmbedBuilder().setColor(0x4a90d9)
-      .setTitle("✦ Work Shift Complete!")
+      .setTitle(`✦ Work Shift Complete! ${E("NilouGoToBed", "💤")}`)
       .setDescription(
-        `${DIVIDER}\n📋 **${job}**\n\n` +
-        `💠 **+${coins}** Coins\n` +
-        `⭐ **+${exp}** EXP\n\n` +
-        `Balance: **${fmt(Number(eco.coins) + coins)}** 💠\n${DIVIDER}`
+        `${DIVIDER}\n${E("NilouWorried", "📋")} **${job}**\n\n` +
+        `${E("NilouRich", "💠")} **+${coins}** Coins\n` +
+        `${E("NilouHmm", "⭐")} **+${exp}** EXP\n\n` +
+        `Balance: **${fmt(Number(eco.coins) + coins)}**\n${DIVIDER}`
       )
       .setFooter(FOOTER_MAIN).setTimestamp();
 
@@ -346,13 +348,13 @@ export async function execute(interaction) {
     const embed = new EmbedBuilder().setColor(NILOU_RED)
       .setTitle(`✦ ${target.username}'s Theater Profile`)
       .setThumbnail(target.displayAvatarURL({ dynamic: true }))
-      .setDescription(`${DIVIDER}\n🎭 **${getRank(lv)}** · Level **${lv}**\n${DIVIDER}`)
+      .setDescription(`${DIVIDER}\n${E("NilouDance", "🎭")} **${getRank(lv)}** · Level **${lv}**\n${DIVIDER}`)
       .addFields(
-        { name: "💠 Coins",            value: fmt(eco.coins),            inline: true },
+        { name: `${E("NilouRich", "💠")} Coins`,            value: fmt(eco.coins),            inline: true },
         { name: "🎟️ Theater Credits", value: fmt(eco.theater_credits),   inline: true },
-        { name: "🎭 Fame",             value: fmt(eco.fame),              inline: true },
-        { name: "⭐ EXP",              value: `${fmt(eco.exp)} / ${fmt(next)}\n\`${bar}\` ${progress}%`, inline: false },
-        { name: "🔥 Daily Streak",     value: `**${eco.daily_streak || 0}** days`, inline: true },
+        { name: `${E("NilouDance", "🎭")} Fame`,             value: fmt(eco.fame),              inline: true },
+        { name: `${E("NilouHmm", "⭐")} EXP`,              value: `${fmt(eco.exp)} / ${fmt(next)}\n\`${bar}\` ${progress}%`, inline: false },
+        { name: `${E("NilouBlush", "🔥")} Daily Streak`,     value: `**${eco.daily_streak || 0}** days`, inline: true },
         { name: "🎒 Inventory",        value: inv.length > 0 ? inv.slice(0, 5).map(i => SHOP_ITEMS.find(s => s.id === i)?.name || i).join("\n") + (inv.length > 5 ? `\n*(+${inv.length - 5} more)*` : "") : "Empty", inline: false },
       )
       .setFooter(FOOTER_MAIN).setTimestamp();
@@ -363,11 +365,11 @@ export async function execute(interaction) {
   // ── Shop ─────────────────────────────────────────────────────────────────────
   if (sub === "shop") {
     const embed = new EmbedBuilder().setColor(NILOU_RED)
-      .setTitle("✦ Menakeri's Treasure Shop 🛍️")
-      .setDescription(`${DIVIDER}\n🌸 Browse and use \`/economy buy <item>\` to purchase!\n${DIVIDER}`)
+      .setTitle(`✦ Menakeri's Treasure Shop ${E("NilouDespair", "🛍️")}`)
+      .setDescription(`${DIVIDER}\n${E("NilouBlush", "🌸")} Browse and use \`/economy buy <item>\` to purchase!\n${DIVIDER}`)
       .addFields(SHOP_ITEMS.map(item => ({
         name:  `${item.name}`,
-        value: `💠 ${fmt(item.price)} Coins / 🎟️ ${fmt(item.tcPrice)} TC · ID: \`${item.id}\`\n${item.desc}${item.consumable ? " *(consumable)*" : ""}`,
+        value: `${E("NilouRich", "💠")} ${fmt(item.price)} Coins / 🎟️ ${fmt(item.tcPrice)} TC · ID: \`${item.id}\`\n${item.desc}${item.consumable ? " *(consumable)*" : ""}`,
         inline: false,
       })))
       .setFooter(FOOTER_MAIN).setTimestamp();

@@ -61,7 +61,7 @@ export async function execute(reaction, user) {
   const starboardChannel = await message.guild.channels.fetch(sb.channelId).catch(() => null);
   if (!starboardChannel) return;
 
-  const starEmoji = getEmojiString("NilouHeart") || "⭐";
+  const starEmoji = "⭐";
   const entryKey = `${guildId}:${sb.emoji}:${messageId}`;
   const existing = starboardEntries.get(entryKey);
 

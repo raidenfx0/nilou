@@ -1,7 +1,10 @@
 import { SlashCommandBuilder, EmbedBuilder, AttachmentBuilder } from "discord.js";
 import { pendingDrops } from "../data/store.js";
 import { getEconomy, updateEconomy } from "../db/index.js";
+import { getEmojiString } from "../utils/emojiCache.js";
 import { NILOU_RED, FOOTER_MAIN, DIVIDER } from "../theme.js";
+
+const E = (name, fallback) => getEmojiString(name) || fallback;
 
 export const data = new SlashCommandBuilder()
   .setName("collect")
@@ -59,7 +62,7 @@ export async function execute(interaction) {
 
   const embed = new EmbedBuilder()
     .setColor(NILOU_RED)
-    .setTitle("✦ You collected the Theater drop! 🎉")
+    .setTitle(`✦ You collected the Theater drop! ${E("NilouCheer", "🎉")}`)
     .setDescription(`${DIVIDER}\n${rewardText}\n\n${interaction.user} was first to the stage!\n${DIVIDER}`)
     .setFooter(FOOTER_MAIN)
     .setTimestamp();

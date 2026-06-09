@@ -1,6 +1,9 @@
 import { SlashCommandBuilder, EmbedBuilder } from "discord.js";
 import { NILOU_RED, FOOTER_MAIN, DIVIDER } from "../theme.js";
 import { getEconomy, updateEconomy } from "../db/index.js";
+import { getEmojiString } from "../utils/emojiCache.js";
+
+const E = (name, fallback) => getEmojiString(name) || fallback;
 
 const COOLDOWN   = 60 * 1000;
 const cooldowns  = new Map();
@@ -74,11 +77,11 @@ export async function execute(interaction) {
     await updateEconomy(userId, guildId, { [currency]: balance + delta });
 
     const embed = new EmbedBuilder().setColor(won ? 0x2ecc71 : 0xe74c3c)
-      .setTitle(won ? "✦ You Won! 🎉" : "✦ You Lost 💧")
+      .setTitle(won ? `✦ You Won! ${E("NilouCheer", "🎉")}` : `✦ You Lost ${E("NilouDespair", "💧")}`)
       .setDescription(
         `${DIVIDER}\n` +
         `The coin landed on **${result === "heads" ? "🌸 Heads" : "💧 Tails"}**!\n\n` +
-        `${won ? `+${amount.toLocaleString()}` : `-${amount.toLocaleString()}`} ${currency === "theater_credits" ? "🎟️" : "💠"}\n` +
+        `${won ? `+${amount.toLocaleString()}` : `-${amount.toLocaleString()}`} ${currency === "theater_credits" ? "🎟️" : E("NilouRich", "💠")}\n` +
         `New balance: **${(balance + delta).toLocaleString()}**\n` +
         `${DIVIDER}`
       )
@@ -105,12 +108,12 @@ export async function execute(interaction) {
     await updateEconomy(userId, guildId, { coins: balance + gain });
 
     const embed = new EmbedBuilder().setColor(won ? 0xf1c40f : 0xe74c3c)
-      .setTitle(won ? `✦ JACKPOT! ${mult}× 🎰` : "✦ No Match 💧")
+      .setTitle(won ? `✦ JACKPOT! ${mult}× ${E("NilouDerpGun2", "🎰")}` : `✦ No Match ${E("NilouDespair", "💧")}`)
       .setDescription(
         `${DIVIDER}\n` +
         `[ ${a} | ${b} | ${c} ]\n\n` +
-        (won ? `+${(gain).toLocaleString()} 💠 (${mult}× multiplier!)` : `-${amount.toLocaleString()} 💠`) + "\n" +
-        `New balance: **${(balance + gain).toLocaleString()}** 💠\n` +
+        (won ? `+${(gain).toLocaleString()} ${E("NilouRich", "💠")} (${mult}× multiplier!)` : `-${amount.toLocaleString()} ${E("NilouRich", "💠")}`) + "\n" +
+        `New balance: **${(balance + gain).toLocaleString()}**\n` +
         `${DIVIDER}`
       )
       .setFooter(FOOTER_MAIN).setTimestamp();
@@ -138,12 +141,12 @@ export async function execute(interaction) {
 
     const ballColor = isGreen ? "🟢" : isRed ? "🔴" : "⚫";
     const embed = new EmbedBuilder().setColor(won ? 0x2ecc71 : 0xe74c3c)
-      .setTitle(won ? "✦ Roulette Win! 🎡" : "✦ Roulette Loss 💧")
+      .setTitle(won ? `✦ Roulette Win! ${E("NilouCheer", "🎡")}` : `✦ Roulette Loss ${E("NilouDespair", "💧")}`)
       .setDescription(
         `${DIVIDER}\n` +
         `Ball landed on **${ballColor} ${number}**!\n\n` +
-        (won ? `+${gain.toLocaleString()} 💠 (${mult}× payout)` : `-${amount.toLocaleString()} 💠`) + "\n" +
-        `New balance: **${(balance + gain).toLocaleString()}** 💠\n` +
+        (won ? `+${gain.toLocaleString()} ${E("NilouRich", "💠")} (${mult}× payout)` : `-${amount.toLocaleString()} ${E("NilouRich", "💠")}`) + "\n" +
+        `New balance: **${(balance + gain).toLocaleString()}**\n` +
         `${DIVIDER}`
       )
       .setFooter(FOOTER_MAIN).setTimestamp();

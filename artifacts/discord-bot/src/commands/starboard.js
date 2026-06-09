@@ -1,10 +1,9 @@
 import { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } from "discord.js";
 import { starboards } from "../data/store.js";
 import { createStarboard, deleteStarboard, getStarboard, getStarboardsByGuild, updateStarboard, getStarboardStats } from "../db/index.js";
-import { getEmojiString } from "../utils/emojiCache.js";
 import { NILOU_RED, FOOTER_MAIN } from "../theme.js";
 
-const starEmoji = () => getEmojiString("NilouHeart") || "⭐";
+const starEmoji = "⭐";
 
 export const data = new SlashCommandBuilder()
   .setName("starboard")
@@ -66,7 +65,7 @@ export async function execute(interaction) {
     const sb = await createStarboard(guildId, name, emoji, channel.id);
     refreshCache(sb);
     return interaction.reply({
-      content: `${starEmoji()} Created starboard **${name}**!\n- Channel: <#${channel.id}>\n- Emoji: ${emoji}\n- Messages with ${sb.threshold} ${emoji} reactions will be posted.`,
+      content: `${starEmoji} Created starboard **${name}**!\n- Channel: <#${channel.id}>\n- Emoji: ${emoji}\n- Messages with ${sb.threshold} ${emoji} reactions will be posted.`,
       flags: [1 << 6], // ephemeral
     });
   }
@@ -77,7 +76,7 @@ export async function execute(interaction) {
     if (!sb) return interaction.reply({ content: `Starboard **${name}** doesn't exist.`, flags: [1 << 6] });
     starboards.delete(`${guildId}:${sb.emoji}`);
     await deleteStarboard(guildId, name);
-    return interaction.reply({ content: `${starEmoji()} Starboard **${name}** deleted.`, flags: [1 << 6] });
+    return interaction.reply({ content: `${starEmoji} Starboard **${name}** deleted.`, flags: [1 << 6] });
   }
 
   if (sub === "list") {
@@ -87,7 +86,7 @@ export async function execute(interaction) {
       const status = r.enabled ? "✅" : "❌";
       return `${status} **${r.name}** — ${r.emoji} in <#${r.channel_id}> (threshold: ${r.threshold})`;
     });
-    return interaction.reply({ content: `${starEmoji()} Starboards:\n${lines.join("\n")}`, flags: [1 << 6] });
+    return interaction.reply({ content: `${starEmoji} Starboards:\n${lines.join("\n")}`, flags: [1 << 6] });
   }
 
   if (sub === "threshold") {
@@ -98,7 +97,7 @@ export async function execute(interaction) {
     await updateStarboard(guildId, name, { threshold: count });
     const updated = await getStarboard(guildId, name);
     refreshCache(updated);
-    return interaction.reply({ content: `${starEmoji()} Starboard **${name}** threshold set to **${count}** ${sb.emoji}.`, flags: [1 << 6] });
+    return interaction.reply({ content: `${starEmoji} Starboard **${name}** threshold set to **${count}** ${sb.emoji}.`, flags: [1 << 6] });
   }
 
   if (sub === "self") {
@@ -121,7 +120,7 @@ export async function execute(interaction) {
     await updateStarboard(guildId, name, { blacklist: JSON.stringify(bl) });
     const updated = await getStarboard(guildId, name);
     refreshCache(updated);
-    return interaction.reply({ content: `${starEmoji()} <#${channel.id}> blacklisted from **${name}**.`, flags: [1 << 6] });
+    return interaction.reply({ content: `${starEmoji} <#${channel.id}> blacklisted from **${name}**.`, flags: [1 << 6] });
   }
 
   if (sub === "unblacklist") {
@@ -133,7 +132,7 @@ export async function execute(interaction) {
     await updateStarboard(guildId, name, { blacklist: JSON.stringify(bl) });
     const updated = await getStarboard(guildId, name);
     refreshCache(updated);
-    return interaction.reply({ content: `${starEmoji()} <#${channel.id}> unblocked from **${name}**.`, flags: [1 << 6] });
+    return interaction.reply({ content: `${starEmoji} <#${channel.id}> unblocked from **${name}**.`, flags: [1 << 6] });
   }
 
   if (sub === "stats") {
