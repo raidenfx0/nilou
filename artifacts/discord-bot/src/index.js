@@ -92,28 +92,22 @@ const Nodes = [
     secure: false,
   },
   {
-    name: "Horizxon",
-    url: "lava.horizxon.studio:80",
-    auth: "horizxon.studio",
-    secure: false,
+    name: "NexCloud Node",
+    url: "n3.nexcloud.in:2026",
+    auth: "nexcloud",
+    secure: false
   },
   {
-    name: "devamop",
-    url: "lavalink.devamop.in:443",
-    auth: "DevamOP",
+    name: "Serenetia",
+    url: "lavalinkv4.serenetia.com:443",
+    auth: "https://seretia.link/discord",
     secure: true,
   },
   {
-    name: "catfein",
-    url: "lava-v4.catfein.is-a.dev:443",
-    auth: "catfein",
+    name: "lavalink-v4.triniumhost.com",
+    url: "lavalink-v4.triniumhost.com:443",
+    auth: "free",
     secure: true,
-  },
-  {
-    name: "lavalinkgamer",
-    url: "lavalinkgamer.mywire.org:80",
-    auth: "lavalinkgamer",
-    secure: false,
   }
 ];
 
