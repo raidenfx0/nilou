@@ -529,8 +529,8 @@ export async function hydrateStore(store) {
   }
   for (const row of countingRows) {
     store.countingChannels.set(row.guild_id, {
-      channelId: row.channel_id, currentCount: row.current_count,
-      highScore: row.high_score, lastUserId: row.last_user_id, failedAt: Number(row.failed_at),
+      channelId: row.channel_id, currentCount: Number(row.current_count || 0),
+      highScore: Number(row.high_score || 0), lastUserId: row.last_user_id, failedAt: Number(row.failed_at || 0),
     });
   }
   for (const row of trigs) {

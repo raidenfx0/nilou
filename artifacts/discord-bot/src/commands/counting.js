@@ -153,7 +153,7 @@ export async function execute(interaction) {
       if (!cfg) return interaction.reply({ content: "❌ No counting channel set.", ephemeral: true });
       if (cfg.failedAt === 0) return interaction.reply({ content: "❌ The count hasn't failed yet — no need to use a save!", ephemeral: true });
 
-      const restored = cfg.failedAt;
+      const restored = Number(cfg.failedAt || 0);
       cfg.currentCount = restored;
       cfg.failedAt     = 0;
       countingChannels.set(guildId, cfg);
