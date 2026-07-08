@@ -99,7 +99,7 @@ export async function execute(reaction, user) {
     embed.setImage(message.embeds[0].image.url);
   }
 
-  const content = `${starEmoji} **${count}** ${sb.emoji} <#${message.channelId}>`;
+  const content = `**${count}** ${sb.emoji}  <#${message.channelId}>`;
   let videoUrl = "";
   if (message.attachments.size > 0) {
     const first = message.attachments.first();

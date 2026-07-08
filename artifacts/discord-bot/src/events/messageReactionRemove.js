@@ -72,7 +72,7 @@ export async function execute(reaction, user) {
   }
 
   const embed = starboardMsg.embeds?.[0];
-  const newContent = `${starEmoji} **${count}** ${sb.emoji} <#${message.channelId}>`;
+  const newContent = `**${count}** ${sb.emoji}  <#${message.channelId}>`;
   await starboardMsg.edit({ content: newContent, embeds: embed ? [EmbedBuilder.from(embed)] : [] }).catch(() => {});
   await updateStarboardEntry(guildId, sb.id, messageId, count);
   starboardEntries.set(entryKey, { ...existing, starCount: count });
