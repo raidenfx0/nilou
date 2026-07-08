@@ -7,19 +7,27 @@ const PANEL_BG   = "#1a0a10";
 const TEXT_MAIN  = "#fff8f0";
 const TEXT_MUTED = "#b08090";
 
-const STAR_COLORS = ["#6b6b6b", "#4a9eff", "#b266ff", "#ffaa00", "#ffcc00", "#ff5e5e"];
-
 async function tryLoadImage(url) {
   try {
-    const res = await fetch(url);
+    const res = await fetch(url, { headers: { "User-Agent": "NilouBot/1.0" } });
     if (!res.ok) return null;
     const buf = Buffer.from(await res.arrayBuffer());
     return await loadImage(buf);
   } catch { return null; }
 }
 
+function weaponStatFmt(stat) {
+  const key = stat.key;
+  const name = STAT_NAMES[key] || key;
+  const pctKeys = ["FIGHT_PROP_HP_PERCENT","FIGHT_PROP_ATTACK_PERCENT","FIGHT_PROP_DEFENSE_PERCENT","FIGHT_PROP_CRITICAL","FIGHT_PROP_CRITICAL_HURT","FIGHT_PROP_CHARGE_EFFICIENCY","FIGHT_PROP_HEAL_ADD","FIGHT_PROP_FIRE_ADD_HURT","FIGHT_PROP_WATER_ADD_HURT","FIGHT_PROP_WIND_ADD_HURT","FIGHT_PROP_ELEC_ADD_HURT","FIGHT_PROP_ICE_ADD_HURT","FIGHT_PROP_ROCK_ADD_HURT","FIGHT_PROP_GRASS_ADD_HURT","FIGHT_PROP_PHYSICAL_ADD_HURT"];
+  const val = pctKeys.includes(key) || key.includes("PERCENT") || key.includes("CRITICAL") || key.includes("HURT") || key.includes("EFFICIENCY") || key.includes("ADD_HURT")
+    ? `${stat.value.toFixed(1)}%`
+    : Math.round(stat.value);
+  return `${name}: ${val}`;
+}
+
 export async function generateBuildCard(character, playerInfo, hideDetails = false) {
-  const W = 860, H = 540;
+  const W = 860, H = 560;
   const canvas = createCanvas(W, H);
   const ctx    = canvas.getContext("2d");
 
@@ -31,72 +39,90 @@ export async function generateBuildCard(character, playerInfo, hideDetails = fal
   roundRect(ctx, 10, 10, W - 20, H - 20, 16);
   ctx.fill();
 
-  const leftSideW = 240;
+  const leftW = 240;
 
-  // Left panel
+  // ── Left panel background ──
   ctx.fillStyle = "#120608";
-  roundRect(ctx, 10, 10, leftSideW, H - 20, 16);
+  roundRect(ctx, 10, 10, leftW, H - 20, 16);
   ctx.fill();
 
-  // Character image (try gacha splash first, then side icon, then fallback)
+  // ── Character image ──
+  // Gacha splash: use icon internal name (consistent with Enka CDN naming)
+  const internalName = character.icon.replace("UI_AvatarIcon_", "");
+  const urls = [
+    `https://enka.network/ui/UI_Gacha_AvatarImg_${internalName}.png`,
+    `https://api.ambr.top/assets/UI/UI_Gacha_AvatarImg_${internalName}.png`,
+    `https://enka.network/ui/${character.icon}.png`,
+    `https://api.ambr.top/assets/UI/${character.icon}.png`,
+  ];
+
   let charImg = null;
-  const gachaUrl = `${ENKA_CDN}/${iconName(character.avatarId)}_Card.png`;
-  const sideUrl  = `${ENKA_CDN}/${iconName(character.avatarId)}.png`;
+  for (const url of urls) {
+    charImg = await tryLoadImage(url);
+    if (charImg) break;
+  }
 
-  charImg = await tryLoadImage(gachaUrl);
-  if (!charImg) charImg = await tryLoadImage(sideUrl);
+  const imgBoxW = leftW - 20;
+  const imgBoxH = 260;
+  const imgX = 20, imgY = 20;
 
-  const imgW = leftSideW - 20;
-  const imgH = 220;
   if (charImg) {
     ctx.save();
-    roundRect(ctx, 20, 20, imgW, imgH, 12);
+    roundRect(ctx, imgX, imgY, imgBoxW, imgBoxH, 12);
     ctx.clip();
-    // Center-crop the image into the slot
-    const scale = Math.max(imgW / charImg.width, imgH / charImg.height);
+    // Center-crop cover style
+    const scale = Math.max(imgBoxW / charImg.width, imgBoxH / charImg.height);
     const dw = charImg.width * scale;
     const dh = charImg.height * scale;
-    const dx = 20 + (imgW - dw) / 2;
-    const dy = 20 + (imgH - dh) / 2;
+    const dx = imgX + (imgBoxW - dw) / 2;
+    const dy = imgY + (imgBoxH - dh) / 2;
     ctx.drawImage(charImg, dx, dy, dw, dh);
     ctx.restore();
+
+    // Dark gradient overlay at bottom of image for text readability
+    const grad = ctx.createLinearGradient(imgX, imgY + imgBoxH - 60, imgX, imgY + imgBoxH);
+    grad.addColorStop(0, "rgba(18,6,8,0)");
+    grad.addColorStop(1, "rgba(18,6,8,0.85)");
+    ctx.fillStyle = grad;
+    ctx.fillRect(imgX, imgY + imgBoxH - 60, imgBoxW, 60);
   } else {
     ctx.fillStyle = "#2a0f18";
-    roundRect(ctx, 20, 20, imgW, imgH, 12);
+    roundRect(ctx, imgX, imgY, imgBoxW, imgBoxH, 12);
     ctx.fill();
     ctx.fillStyle = NILOU_RED;
     ctx.font = "bold 14px sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText(character.name, leftSideW / 2 + 10, 130);
+    ctx.fillText(character.name, leftW / 2 + 10, imgY + imgBoxH / 2);
   }
 
-  // Divider
-  ctx.fillStyle = NILOU_RED;
-  ctx.fillRect(10, 248, leftSideW, 2);
-
-  // Name + Constellation stars
+  // ── Name + Constellation overlay on image ──
   ctx.fillStyle = TEXT_MAIN;
-  ctx.font = "bold 18px sans-serif";
+  ctx.font = "bold 20px sans-serif";
   ctx.textAlign = "center";
-  ctx.fillText(character.name, leftSideW / 2 + 10, 272);
+  const nameY = charImg ? imgY + imgBoxH - 48 : imgY + imgBoxH - 48;
+  ctx.fillText(character.name, leftW / 2 + 10, nameY);
 
-  // Constellation stars (C0-C6)
   const c = Math.min(character.constellations || 0, 6);
-  const starStr = "★".repeat(c) + "☆".repeat(6 - c);
-  ctx.fillStyle = c >= 6 ? "#ff5e5e" : c >= 4 ? "#ffcc00" : c >= 2 ? "#b266ff" : TEXT_MUTED;
-  ctx.font = "14px sans-serif";
-  ctx.fillText(`C${c} ${starStr}`, leftSideW / 2 + 10, 292);
+  const starStr = "\u2605".repeat(c) + "\u2606".repeat(6 - c);
+  ctx.fillStyle = c >= 6 ? "#ff5e5e" : c >= 4 ? "#ffcc00" : c >= 2 ? "#b266ff" : "#a08090";
+  ctx.font = "bold 14px sans-serif";
+  ctx.fillText(`C${c} ${starStr}`, leftW / 2 + 10, nameY + 22);
 
-  // Level + Total CV
+  // ── Divider ──
+  ctx.fillStyle = NILOU_RED;
+  ctx.fillRect(10, 288, leftW, 2);
+
+  // ── Level + Total CV ──
   ctx.fillStyle = TEXT_MUTED;
   ctx.font = "13px sans-serif";
-  ctx.fillText(`Lv.${character.level} · Total CV ${character.totalCV}`, leftSideW / 2 + 10, 310);
+  ctx.textAlign = "center";
+  ctx.fillText(`Lv.${character.level} \u00b7 Total CV ${character.totalCV}`, leftW / 2 + 10, 308);
 
-  // Stats
+  // ── Stats ──
   const stats = [
-    ["HP",    Math.round(character.hp)],
-    ["ATK",   Math.round(character.atk)],
-    ["DEF",   Math.round(character.def)],
+    ["HP",    Math.round(character.hp).toLocaleString()],
+    ["ATK",   Math.round(character.atk).toLocaleString()],
+    ["DEF",   Math.round(character.def).toLocaleString()],
     ["EM",    Math.round(character.em)],
     ["ER",    `${character.er}%`],
     ["CR",    `${character.critRate}%`],
@@ -106,7 +132,7 @@ export async function generateBuildCard(character, playerInfo, hideDetails = fal
     stats.push([`${character.elementName} DMG`, `${character.elementBonus}%`]);
   }
 
-  let sy = 340;
+  let sy = 332;
   for (const [label, val] of stats) {
     ctx.textAlign = "left";
     ctx.fillStyle = TEXT_MUTED;
@@ -115,16 +141,16 @@ export async function generateBuildCard(character, playerInfo, hideDetails = fal
     ctx.textAlign = "right";
     ctx.fillStyle = TEXT_MAIN;
     ctx.font = "11px sans-serif";
-    ctx.fillText(String(val), leftSideW - 5, sy);
+    ctx.fillText(String(val), leftW - 5, sy);
     sy += 18;
   }
 
-  // ── Weapon panel ────────────────────────────────────────────────────
+  // ── Weapon panel ──
+  const wy = H - 70;
   if (character.weapon) {
     const w = character.weapon;
-    const wy = H - 75;
     ctx.fillStyle = "#1f0a12";
-    roundRect(ctx, 16, wy, leftSideW - 12, 50, 8);
+    roundRect(ctx, 16, wy, leftW - 12, 52, 8);
     ctx.fill();
 
     // Weapon icon
@@ -132,56 +158,62 @@ export async function generateBuildCard(character, playerInfo, hideDetails = fal
       const wImg = await tryLoadImage(`${ENKA_CDN}/${w.icon}.png`);
       if (wImg) {
         ctx.save();
-        roundRect(ctx, 22, wy + 5, 40, 40, 6);
+        roundRect(ctx, 22, wy + 6, 40, 40, 6);
         ctx.clip();
-        ctx.drawImage(wImg, 22, wy + 5, 40, 40);
+        ctx.drawImage(wImg, 22, wy + 6, 40, 40);
         ctx.restore();
       }
     }
 
-    // Weapon stars
-    const stars = "★".repeat(w.rankLevel || 1);
+    // Weapon name
+    const wName = w.name || "Weapon";
     ctx.fillStyle = TEXT_MAIN;
     ctx.font = "bold 11px sans-serif";
     ctx.textAlign = "left";
-    ctx.fillText(`R${w.refinement} ${stars}`, 68, wy + 20);
+    ctx.fillText(wName, 68, wy + 20);
 
+    // Refinement + Level
+    const stars = "\u2605".repeat(w.rankLevel || 1);
     ctx.fillStyle = TEXT_MUTED;
     ctx.font = "10px sans-serif";
-    ctx.fillText(`Lv.${w.level}`, 68, wy + 38);
+    ctx.fillText(`R${w.refinement} ${stars} \u00b7 Lv.${w.level}`, 68, wy + 36);
 
-    // Weapon stat preview
+    // Weapon substat (skip BASE_ATTACK)
     if (w.stats && w.stats.length > 0) {
-      const firstStat = w.stats[0];
-      const sName = STAT_NAMES[firstStat.key] || firstStat.key;
-      const isPct = firstStat.value < 10; // rough heuristic for percentage
-      const sVal = isPct ? `${firstStat.value.toFixed(1)}%` : Math.round(firstStat.value);
+      const subStat = w.stats.find(s => s.key !== "FIGHT_PROP_BASE_ATTACK") || w.stats[0];
+      const statLine = weaponStatFmt(subStat);
       ctx.textAlign = "right";
       ctx.fillStyle = TEXT_MUTED;
-      ctx.fillText(`${sName}: ${sVal}`, leftSideW - 10, wy + 28);
+      ctx.font = "10px sans-serif";
+      ctx.fillText(statLine, leftW - 10, wy + 28);
     }
+  } else {
+    ctx.fillStyle = TEXT_MUTED;
+    ctx.font = "11px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("No weapon data", leftW / 2 + 10, wy + 28);
   }
 
-  // ── Artifacts grid ─────────────────────────────────────────────────────────
-  const artX    = leftSideW + 30;
-  const artW    = (W - artX - 20) / 3;
+  // ── Artifacts grid ──
+  const artX = leftW + 30;
+  const artW = (W - artX - 20) / 3;
   const artifactTypes = ["EQUIP_BRACER","EQUIP_NECKLACE","EQUIP_SHOES","EQUIP_RING","EQUIP_DRESS"];
 
   for (let i = 0; i < Math.min(5, artifactTypes.length); i++) {
     const art = character.artifacts.find(a => a.equipType === artifactTypes[i]);
-    const col  = i % 3;
-    const row  = Math.floor(i / 3);
-    const ax   = artX + col * (artW + 8);
-    const ay   = 20 + row * 250;
-    const aw   = artW;
-    const ah   = 235;
+    const col = i % 3;
+    const row = Math.floor(i / 3);
+    const ax = artX + col * (artW + 8);
+    const ay = 20 + row * 265;
+    const aw = artW;
+    const ah = 250;
 
     ctx.fillStyle = "#200c12";
     roundRect(ctx, ax, ay, aw, ah, 10);
     ctx.fill();
 
     ctx.strokeStyle = NILOU_RED + "44";
-    ctx.lineWidth   = 1;
+    ctx.lineWidth = 1;
     roundRect(ctx, ax, ay, aw, ah, 10);
     ctx.stroke();
 
@@ -217,42 +249,42 @@ export async function generateBuildCard(character, playerInfo, hideDetails = fal
     ctx.textAlign = "right";
     ctx.fillText(`CV ${art.cv}`, ax + aw - 8, ay + 20);
 
-    // Main stat
+    // Main stat name + value
     if (art.mainStat) {
+      const mainLabel = STAT_NAMES[art.mainStat.key] || art.mainStat.key;
       ctx.fillStyle = TEXT_MAIN;
       ctx.font = "bold 11px sans-serif";
       ctx.textAlign = "left";
-      const mainLabel = STAT_NAMES[art.mainStat.key] || art.mainStat.key;
-      ctx.fillText(mainLabel, ax + 62, ay + 40);
-      // Main stat value
-      const isPct = art.mainStat.key.includes("PERCENT") || art.mainStat.key.includes("CRITICAL") || art.mainStat.key.includes("HURT") || art.mainStat.key.includes("EFFICIENCY") || art.mainStat.key.includes("ADD_HURT") || art.mainStat.key.includes("HEAL_ADD");
-      const mainVal = isPct ? `${art.mainStat.value.toFixed(1)}%` : Math.round(art.mainStat.value);
+      ctx.fillText(mainLabel, ax + 62, ay + 38);
+
+      const pctMain = ["FIGHT_PROP_HP_PERCENT","FIGHT_PROP_ATTACK_PERCENT","FIGHT_PROP_DEFENSE_PERCENT","FIGHT_PROP_CRITICAL","FIGHT_PROP_CRITICAL_HURT","FIGHT_PROP_CHARGE_EFFICIENCY","FIGHT_PROP_HEAL_ADD","FIGHT_PROP_FIRE_ADD_HURT","FIGHT_PROP_WATER_ADD_HURT","FIGHT_PROP_WIND_ADD_HURT","FIGHT_PROP_ELEC_ADD_HURT","FIGHT_PROP_ICE_ADD_HURT","FIGHT_PROP_ROCK_ADD_HURT","FIGHT_PROP_GRASS_ADD_HURT","FIGHT_PROP_PHYSICAL_ADD_HURT"].includes(art.mainStat.key);
+      const mainVal = pctMain ? `${art.mainStat.value.toFixed(1)}%` : Math.round(art.mainStat.value);
       ctx.fillStyle = TEXT_MUTED;
       ctx.font = "10px sans-serif";
-      ctx.fillText(`${mainVal}`, ax + 62, ay + 54);
+      ctx.fillText(`${mainVal}`, ax + 62, ay + 52);
     }
 
     // Substats divider
-    let subY = ay + 88;
+    let subY = ay + 92;
     ctx.fillStyle = NILOU_RED;
     ctx.fillRect(ax + 8, subY - 8, aw - 16, 1);
     subY += 4;
 
     // Substats
     for (const sub of art.subStats.slice(0, 4)) {
-      const name   = STAT_NAMES[sub.key] || sub.key;
+      const name = STAT_NAMES[sub.key] || sub.key;
       const isCrit = sub.key === "FIGHT_PROP_CRITICAL" || sub.key === "FIGHT_PROP_CRITICAL_HURT";
       ctx.fillStyle = isCrit ? "#ffd700" : TEXT_MUTED;
       ctx.font = isCrit ? "bold 10px sans-serif" : "10px sans-serif";
       ctx.textAlign = "left";
-      const isPct = name.includes("Rate") || name.includes("DMG") || name.includes("%") || name.includes("Recharge") || name.includes("Bonus");
-      const valStr = isPct ? `${sub.value.toFixed(1)}%` : Math.round(sub.value).toLocaleString();
+      const pct = ["FIGHT_PROP_HP_PERCENT","FIGHT_PROP_ATTACK_PERCENT","FIGHT_PROP_DEFENSE_PERCENT","FIGHT_PROP_CRITICAL","FIGHT_PROP_CRITICAL_HURT","FIGHT_PROP_CHARGE_EFFICIENCY","FIGHT_PROP_HEAL_ADD","FIGHT_PROP_FIRE_ADD_HURT","FIGHT_PROP_WATER_ADD_HURT","FIGHT_PROP_WIND_ADD_HURT","FIGHT_PROP_ELEC_ADD_HURT","FIGHT_PROP_ICE_ADD_HURT","FIGHT_PROP_ROCK_ADD_HURT","FIGHT_PROP_GRASS_ADD_HURT","FIGHT_PROP_PHYSICAL_ADD_HURT"].includes(sub.key);
+      const valStr = pct ? `${sub.value.toFixed(1)}%` : Math.round(sub.value).toLocaleString();
       ctx.fillText(`${name}: ${valStr}`, ax + 8, subY);
       subY += 16;
     }
   }
 
-  // Footer
+  // ── Footer ──
   ctx.fillStyle = TEXT_MUTED;
   ctx.font = "11px sans-serif";
   ctx.textAlign = "left";
@@ -262,28 +294,15 @@ export async function generateBuildCard(character, playerInfo, hideDetails = fal
     ctx.fillStyle = TEXT_MUTED;
     ctx.fillText("UID & name hidden", artX, H - 22);
   } else {
-    ctx.fillText(`UID: ${playerInfo.uid} · ${playerInfo.nickname}`, artX, H - 22);
+    ctx.fillText(`UID: ${playerInfo.uid} \u00b7 ${playerInfo.nickname}`, artX, H - 22);
   }
 
   ctx.fillStyle = NILOU_RED;
   ctx.font = "11px sans-serif";
   ctx.textAlign = "right";
-  ctx.fillText("Nilou Bot · Enka.Network", W - 20, H - 22);
+  ctx.fillText("Nilou Bot \u00b7 Enka.Network", W - 20, H - 22);
 
   return canvas.toBuffer("image/png");
-}
-
-function iconName(avatarId) {
-  const MAP = {
-    10000052: "UI_AvatarIcon_Shougun",
-    10000046: "UI_AvatarIcon_Hutao",
-    10000058: "UI_AvatarIcon_Yae",
-    10000069: "UI_AvatarIcon_Nilou",
-    10000088: "UI_AvatarIcon_Furina",
-    10000086: "UI_AvatarIcon_Neuvillette",
-    10000095: "UI_AvatarIcon_Arlecchino",
-  };
-  return MAP[avatarId] || `UI_AvatarIcon_${avatarId}`;
 }
 
 function roundRect(ctx, x, y, w, h, r) {

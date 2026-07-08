@@ -3,24 +3,38 @@ import { calcCV, EQUIP_TYPE_NAMES, FIGHT_PROP_KEYS } from "./genshinData.js";
 const BASE_URL = "https://enka.network/api/uid";
 const HEADERS  = { "User-Agent": "NilouBot/1.0 (Discord Bot)" };
 const YATTA_API_BASE = "https://gi.yatta.moe/api/v2/en/avatar";
+const YATTA_WEAPON_BASE = "https://gi.yatta.moe/api/v2/en/weapon";
 const characterNameCache = new Map();
+const weaponNameCache   = new Map();
 
 async function resolveCharacterName(avatarId) {
   const fallback = `Character #${avatarId}`;
-  if (characterNameCache.has(avatarId)) {
-    return characterNameCache.get(avatarId);
-  }
-
+  if (characterNameCache.has(avatarId)) return characterNameCache.get(avatarId);
   try {
     const res = await fetch(`${YATTA_API_BASE}/${avatarId}`, { headers: HEADERS });
     if (!res.ok) throw new Error(`Avatar name lookup failed: ${res.status}`);
-
     const data = await res.json();
     const resolved = data?.data?.name || fallback;
     characterNameCache.set(avatarId, resolved);
     return resolved;
   } catch {
     characterNameCache.set(avatarId, fallback);
+    return fallback;
+  }
+}
+
+async function resolveWeaponName(nameTextMapHash) {
+  const fallback = "Weapon";
+  if (weaponNameCache.has(nameTextMapHash)) return weaponNameCache.get(nameTextMapHash);
+  try {
+    // Try a quick approach: look up weapon info via Enka text map if possible
+    // Since weapon names aren't in the standard Enka response, use a generic lookup
+    // Yatta API: /api/v2/en/weapon doesn't take nameTextMapHash directly.
+    // We fallback to "Weapon" for now since weapon names need a text map lookup.
+    weaponNameCache.set(nameTextMapHash, fallback);
+    return fallback;
+  } catch {
+    weaponNameCache.set(nameTextMapHash, fallback);
     return fallback;
   }
 }
@@ -96,7 +110,10 @@ export async function parseCharacters(data) {
       const flat = weaponEntry.flat;
       const affixValues = Object.values(w.affixMap || {});
       const refinement = affixValues.length > 0 ? affixValues[0] + 1 : 1;
+      const weaponId = flat.nameTextMapHash;
+      const weaponName = weaponId ? await resolveWeaponName(weaponId) : "Weapon";
       weapon = {
+        name:      weaponName,
         icon:      flat.icon || "",
         level:     w.level || 1,
         rankLevel: flat.rankLevel || 1,
