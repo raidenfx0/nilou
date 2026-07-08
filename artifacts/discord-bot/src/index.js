@@ -49,6 +49,7 @@ import { isAdmin } from "./utils/adminCheck.js";
 import { buildCountdownEmbed } from "./commands/countdown.js";
 import { openTicket, closeTicket, closeEmbed } from "./commands/ticket.js";
 import { handleGiveawayButton, restoreGiveawayTimers } from "./commands/giveaway.js";
+import { handleHelpSelect, handleHelpButton } from "./commands/help.js";
 import { updateVoiceStatus } from "./commands/music.js";
 import {
   hydrateStore,
@@ -241,6 +242,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
     return;
   }
 
+  if (interaction.isStringSelectMenu() && interaction.customId === "help_category") {
+    await handleHelpSelect(interaction);
+    return;
+  }
+
   if (interaction.isChatInputCommand()) {
     const command = client.commands.get(interaction.commandName);
     if (!command) return;
@@ -293,6 +299,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
     if (id.startsWith("gw_enter:") || id.startsWith("gw_leave:")) {
       await handleGiveawayButton(interaction);
+      return;
+    }
+
+    if (id.startsWith("help_")) {
+      await handleHelpButton(interaction);
       return;
     }
 

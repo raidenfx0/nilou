@@ -38,6 +38,8 @@ const SHOP_ITEMS = [
 function getRank(level) { return [...RANKS].reverse().find(r => level >= r.minLevel)?.name || "Stagehand"; }
 function rand(min, max)  { return Math.floor(Math.random() * (max - min + 1)) + min; }
 const E = (name, fallback) => getEmojiString(name) || fallback;
+// New custom economy emojis: :coins: :theatercredits: :fame: :exp:
+const EC = (name, fallback) => getEmojiString(name) || fallback;
 function getLevelFromExp(exp) {
   let lv = 1;
   for (let i = 1; i < LEVELS.length; i++) {
@@ -109,13 +111,13 @@ export async function execute(interaction) {
       .setThumbnail(interaction.user.displayAvatarURL({ dynamic: true }))
       .setDescription(
         `${DIVIDER}\n` +
-        `${E("NilouRich", "💠")} Coins: **${fmt(eco.coins)}**\n` +
-        `🎟️ Theater Credits: **${fmt(eco.theater_credits)}**\n` +
-        `${E("NilouDance", "🎭")} Fame: **${fmt(eco.fame)}**\n` +
+        `${E("coins", "💠")} Coins: **${fmt(eco.coins)}**\n` +
+        `${E("theatercredits", "🎟️")} Theater Credits: **${fmt(eco.theater_credits)}**\n` +
+        `${E("fame", "🎭")} Fame: **${fmt(eco.fame)}**\n` +
         `${DIVIDER}`
       )
       .addFields(
-        { name: `${E("NilouHmm", "⭐")} Level`, value: `**${lv}** — ${getRank(lv)}`, inline: true },
+        { name: `${E("exp", "⭐")} Level`, value: `**${lv}** — ${getRank(lv)}`, inline: true },
         { name: "📈 EXP Progress", value: `${fmt(eco.exp)} / ${fmt(nextExp)}\n\`${bar}\` ${progress}%`, inline: false },
         { name: `${E("NilouBlush", "🔥")} Daily Streak`, value: `**${eco.daily_streak || 0}** days`, inline: true },
       )
@@ -174,16 +176,16 @@ export async function execute(interaction) {
       .setDescription(
         `${DIVIDER}\n` +
         `**${interaction.user.username}** collected their daily reward!\n\n` +
-        `${E("NilouRich", "💠")} **+${fmt(coinsEarned)}** Coins\n` +
-        `🎟️ **+${tcEarned}** Theater Credits\n` +
-        `${E("NilouHmm", "⭐")} **+${expEarned}** EXP\n` +
+        `${E("coins", "💠")} **+${fmt(coinsEarned)}** Coins\n` +
+        `${E("theatercredits", "🎟️")} **+${tcEarned}** Theater Credits\n` +
+        `${E("exp", "⭐")} **+${expEarned}** EXP\n` +
         (streakBonus > 0 ? `\n${E("NilouCheer", "✨")} **Streak Bonus:** +${Math.round(streakBonus * 100)}%\n` : "") +
         (milestone ? `\n${milestone}\n` : "") +
         `${DIVIDER}`
       )
       .addFields(
         { name: `${E("NilouBlush", "🔥")} Streak`, value: `**${streak}** day${streak !== 1 ? "s" : ""}`, inline: true },
-        { name: `${E("NilouRich", "💰")} New Balance`, value: `**${fmt(newCoins)}**`, inline: true },
+        { name: `${E("coins", "💰")} New Balance`, value: `**${fmt(newCoins)}**`, inline: true },
       )
       .setFooter(FOOTER_MAIN).setTimestamp();
 
@@ -260,10 +262,10 @@ export async function execute(interaction) {
       .setDescription(
         `${DIVIDER}\n` +
         `${E("NilouDance", "🌸")} ${interaction.user} ${perf}!\n\n` +
-        `${E("NilouRich", "💠")} **+${fmt(coins)}** Coins${hasGrace ? " *(×2 Grace!)*" : ""}\n` +
-        `🎟️ **+${tc}** Theater Credits\n` +
-        `${E("NilouDance", "🎭")} **+${fame}** Fame\n` +
-        `${E("NilouHmm", "⭐")} **+${exp}** EXP\n\n` +
+        `${E("coins", "💠")} **+${fmt(coins)}** Coins${hasGrace ? " *(×2 Grace!)*" : ""}\n` +
+        `${E("theatercredits", "🎟️")} **+${tc}** Theater Credits\n` +
+        `${E("fame", "🎭")} **+${fame}** Fame\n` +
+        `${E("exp", "⭐")} **+${exp}** EXP\n\n` +
         `Balance: **${fmt(Number(eco.coins) + coins)}** · Level **${newLevel}** ${getRank(newLevel)}` +
         `\n${DIVIDER}`
       )
@@ -275,7 +277,7 @@ export async function execute(interaction) {
           username:    interaction.user.username,
           avatarUrl:   interaction.user.displayAvatarURL({ extension: "png", size: 256 }),
           level:       newLevel,
-          rewardLines: [`💠 +${fmt(coins)} · 🎟️ +${tc} · 🎭 +${fame}`, `Rank: ${getRank(newLevel)}`],
+          rewardLines: [`${E("coins", "💠")} +${fmt(coins)} · ${E("theatercredits", "🎟️")} +${tc} · ${E("fame", "🎭")} +${fame}`, `Rank: ${getRank(newLevel)}`],
         });
         const file = new AttachmentBuilder(buf, { name: "levelup.png" });
         embed.setImage("attachment://levelup.png");
@@ -325,8 +327,8 @@ export async function execute(interaction) {
       .setTitle(`✦ Work Shift Complete! ${E("NilouGoToBed", "💤")}`)
       .setDescription(
         `${DIVIDER}\n${E("NilouWorried", "📋")} **${job}**\n\n` +
-        `${E("NilouRich", "💠")} **+${coins}** Coins\n` +
-        `${E("NilouHmm", "⭐")} **+${exp}** EXP\n\n` +
+        `${E("coins", "💠")} **+${coins}** Coins\n` +
+        `${E("exp", "⭐")} **+${exp}** EXP\n\n` +
         `Balance: **${fmt(Number(eco.coins) + coins)}**\n${DIVIDER}`
       )
       .setFooter(FOOTER_MAIN).setTimestamp();
@@ -350,10 +352,10 @@ export async function execute(interaction) {
       .setThumbnail(target.displayAvatarURL({ dynamic: true }))
       .setDescription(`${DIVIDER}\n${E("NilouDance", "🎭")} **${getRank(lv)}** · Level **${lv}**\n${DIVIDER}`)
       .addFields(
-        { name: `${E("NilouRich", "💠")} Coins`,            value: fmt(eco.coins),            inline: true },
-        { name: "🎟️ Theater Credits", value: fmt(eco.theater_credits),   inline: true },
-        { name: `${E("NilouDance", "🎭")} Fame`,             value: fmt(eco.fame),              inline: true },
-        { name: `${E("NilouHmm", "⭐")} EXP`,              value: `${fmt(eco.exp)} / ${fmt(next)}\n\`${bar}\` ${progress}%`, inline: false },
+        { name: `${E("coins", "💠")} Coins`,            value: fmt(eco.coins),            inline: true },
+        { name: `${E("theatercredits", "🎟️")} Theater Credits`, value: fmt(eco.theater_credits),   inline: true },
+        { name: `${E("fame", "🎭")} Fame`,             value: fmt(eco.fame),              inline: true },
+        { name: `${E("exp", "⭐")} EXP`,              value: `${fmt(eco.exp)} / ${fmt(next)}\n\`${bar}\` ${progress}%`, inline: false },
         { name: `${E("NilouBlush", "🔥")} Daily Streak`,     value: `**${eco.daily_streak || 0}** days`, inline: true },
         { name: "🎒 Inventory",        value: inv.length > 0 ? inv.slice(0, 5).map(i => SHOP_ITEMS.find(s => s.id === i)?.name || i).join("\n") + (inv.length > 5 ? `\n*(+${inv.length - 5} more)*` : "") : "Empty", inline: false },
       )
@@ -369,7 +371,7 @@ export async function execute(interaction) {
       .setDescription(`${DIVIDER}\n${E("NilouBlush", "🌸")} Browse and use \`/economy buy <item>\` to purchase!\n${DIVIDER}`)
       .addFields(SHOP_ITEMS.map(item => ({
         name:  `${item.name}`,
-        value: `${E("NilouRich", "💠")} ${fmt(item.price)} Coins / 🎟️ ${fmt(item.tcPrice)} TC · ID: \`${item.id}\`\n${item.desc}${item.consumable ? " *(consumable)*" : ""}`,
+        value: `${E("coins", "💠")} ${fmt(item.price)} Coins / ${E("theatercredits", "🎟️")} ${fmt(item.tcPrice)} TC · ID: \`${item.id}\`\n${item.desc}${item.consumable ? " *(consumable)*" : ""}`,
         inline: false,
       })))
       .setFooter(FOOTER_MAIN).setTimestamp();
@@ -453,7 +455,7 @@ export async function execute(interaction) {
   if (sub === "leaderboard") {
     const type  = interaction.options.getString("type") || "coins";
     const rows  = await getLeaderboard(type, 10);
-    const label = { coins: "💠 Coins", theater_credits: "🎟️ Theater Credits", fame: "🎭 Fame", exp: "⭐ EXP" }[type];
+    const label = { coins: `${E("coins", "💠")} Coins`, theater_credits: `${E("theatercredits", "🎟️")} Theater Credits`, fame: `${E("fame", "🎭")} Fame`, exp: `${E("exp", "⭐")} EXP` }[type];
     const medals = ["🥇","🥈","🥉"];
 
     const embed = new EmbedBuilder().setColor(NILOU_RED)
