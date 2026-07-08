@@ -103,22 +103,20 @@ export async function execute(message) {
     if (!isNaN(input)) {
       if (userId === countCfg.lastUserId) {
         await message.react("❌");
-        const msg = await message.channel.send(`❌ **${message.author.tag}**, you can't count twice in a row! Count **resets to 0**. Next: **1**`);
+        await message.channel.send(`❌ **${message.author.tag}**, you can't count twice in a row! Count **resets to 0**. Next: **1**`);
         countCfg.failedAt = countCfg.currentCount; countCfg.currentCount = 0; countCfg.lastUserId = null;
         countingChannels.set(guildId, countCfg);
         await upsertCountingConfig(guildId, { channel_id: countCfg.channelId, current_count: 0, last_user_id: null, failed_at: countCfg.failedAt });
-        setTimeout(() => msg.delete().catch(() => {}), 10000);
         return;
       }
       if (input !== expected) {
         await message.react("❌");
-        const msg = await message.channel.send(
+        await message.channel.send(
           `❌ **${message.author.tag}** said **${input}** but expected **${expected}**! Count **resets to 0**.\nUse \`/counting save use\` or \`/counting guild-save\` to restore! 💾`
         );
         countCfg.failedAt = countCfg.currentCount; countCfg.currentCount = 0; countCfg.lastUserId = null;
         countingChannels.set(guildId, countCfg);
         await upsertCountingConfig(guildId, { channel_id: countCfg.channelId, current_count: 0, last_user_id: null, failed_at: countCfg.failedAt });
-        setTimeout(() => msg.delete().catch(() => {}), 12000);
         return;
       }
       await message.react("✅");
