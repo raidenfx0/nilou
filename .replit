@@ -17,7 +17,7 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "pnpm --filter @workspace/discord-bot run start"
+args = "cd artifacts/discord-bot && ./start.sh"
 
 [workflows.workflow.metadata]
 outputType = "console"
@@ -36,6 +36,7 @@ task = "shell.exec"
 args = "pnpm --filter @workspace/dashboard run dev"
 cwd = "./artifacts/dashboard"
 waitForPort = 23183
+ensurePreviewReachable = "/"
 router = "path"
 
 [workflows.workflow.tasks.env]
@@ -56,6 +57,8 @@ task = "shell.exec"
 args = "pnpm --filter @workspace/api-server run dev"
 cwd = "./artifacts/api-server"
 waitForPort = 8080
+ensurePreviewReachable = "/"
+router = "path"
 
 [workflows.workflow.tasks.env]
 PORT = "8080"
@@ -75,6 +78,8 @@ task = "shell.exec"
 args = "pnpm --filter @workspace/mockup-sandbox run dev"
 cwd = "./artifacts/mockup-sandbox"
 waitForPort = 8081
+ensurePreviewReachable = "/"
+router = "path"
 
 [workflows.workflow.tasks.env]
 PORT = "8081"

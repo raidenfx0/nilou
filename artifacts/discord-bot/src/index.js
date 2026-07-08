@@ -82,10 +82,17 @@ const client = new Client({
 });
 
 /**
- * Lavalink Configuration - Multi-Node Failover
- * We use multiple public nodes so if one is offline, Nilou can still perform!
+ * Lavalink Configuration - Local node first, then public fallback
+ * Priority: localhost (co-hosted) → public nodes (failover)
  */
+const LOCAL_PASSWORD = process.env.LAVALINK_PASSWORD || "niloubot-lavalink-2026";
 const Nodes = [
+  {
+    name: "Nilou Local",
+    url: "localhost:2333",
+    auth: LOCAL_PASSWORD,
+    secure: false,
+  },
   {
     name: "AjieDev",
     url: "lava-v4.ajieblogs.eu.org:80",
