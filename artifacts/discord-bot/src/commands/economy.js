@@ -98,7 +98,7 @@ export async function execute(interaction) {
 
   // ── Balance ─────────────────────────────────────────────────────────────────
   if (sub === "balance") {
-    const eco = await getEconomy(userId, guildId);
+    const eco = await getEconomy(userId);
     const lv  = getLevelFromExp(Number(eco.exp));
     const nextExp = getExpForLevel(lv);
     const progress = nextExp > 0 ? Math.min(100, Math.round((Number(eco.exp) / nextExp) * 100)) : 100;
@@ -125,7 +125,7 @@ export async function execute(interaction) {
 
   // ── Daily ────────────────────────────────────────────────────────────────────
   if (sub === "daily") {
-    const eco  = await getEconomy(userId, guildId);
+    const eco  = await getEconomy(userId);
     const now  = Date.now();
     const last = Number(eco.last_daily || 0);
     const remaining = DAILY_CD - (now - last);
@@ -155,7 +155,7 @@ export async function execute(interaction) {
     const oldLevel = getLevelFromExp(Number(eco.exp));
     const newLevel = getLevelFromExp(newExp);
 
-    await updateEconomy(userId, guildId, {
+    await updateEconomy(userId, {
       coins:           newCoins,
       theater_credits: newTC,
       exp:             newExp,
@@ -208,7 +208,7 @@ export async function execute(interaction) {
   // ── Perform ──────────────────────────────────────────────────────────────────
   if (sub === "perform") {
     await interaction.deferReply();
-    const eco  = await getEconomy(userId, guildId);
+    const eco  = await getEconomy(userId);
     const now  = Date.now();
     const last = Number(eco.last_perform);
 
@@ -244,7 +244,7 @@ export async function execute(interaction) {
     ];
     const perf = PERFORMANCES[Math.floor(Math.random() * PERFORMANCES.length)];
 
-    await updateEconomy(userId, guildId, {
+    await updateEconomy(userId, {
       coins:           Number(eco.coins)           + coins,
       theater_credits: Number(eco.theater_credits)  + tc,
       fame:            Number(eco.fame)             + fame,
@@ -289,7 +289,7 @@ export async function execute(interaction) {
   // ── Work ─────────────────────────────────────────────────────────────────────
   if (sub === "work") {
     await interaction.deferReply();
-    const eco  = await getEconomy(userId, guildId);
+    const eco  = await getEconomy(userId);
     const now  = Date.now();
     const lastWork = Number(eco.last_work || 0);
 
@@ -313,7 +313,7 @@ export async function execute(interaction) {
     const newExp  = oldExp + exp;
     const newLevel = getLevelFromExp(newExp);
 
-    await updateEconomy(userId, guildId, {
+    await updateEconomy(userId, {
       coins:     Number(eco.coins) + coins,
       exp:       newExp,
       level:     newLevel,
@@ -338,7 +338,7 @@ export async function execute(interaction) {
   if (sub === "profile") {
     const target = interaction.options.getUser("user") || interaction.user;
     await interaction.deferReply();
-    const eco  = await getEconomy(target.id, guildId);
+    const eco  = await getEconomy(target.id);
     const lv   = getLevelFromExp(Number(eco.exp));
     const next = getExpForLevel(lv);
     const progress = next > 0 ? Math.min(100, Math.round((Number(eco.exp) / next) * 100)) : 100;
@@ -384,7 +384,7 @@ export async function execute(interaction) {
     if (!item) return interaction.reply({ content: "❌ Item not found.", ephemeral: true });
 
     await interaction.deferReply({ ephemeral: true });
-    const eco     = await getEconomy(userId, guildId);
+    const eco     = await getEconomy(userId);
     const price   = currency === "theater_credits" ? item.tcPrice : item.price;
     const balance = Number(eco[currency]);
 
@@ -392,7 +392,7 @@ export async function execute(interaction) {
 
     const inventory = JSON.parse(eco.inventory || "[]");
     inventory.push(itemId);
-    await updateEconomy(userId, guildId, { [currency]: balance - price, inventory: JSON.stringify(inventory) });
+    await updateEconomy(userId, { [currency]: balance - price, inventory: JSON.stringify(inventory) });
 
     return interaction.editReply({ content: `🌸 You bought **${item.name}**! ${item.desc}` });
   }
@@ -400,7 +400,7 @@ export async function execute(interaction) {
   // ── Inventory ────────────────────────────────────────────────────────────────
   if (sub === "inventory") {
     const target = interaction.options.getUser("user") || interaction.user;
-    const eco    = await getEconomy(target.id, guildId);
+    const eco    = await getEconomy(target.id);
     const inv    = JSON.parse(eco.inventory || "[]");
 
     // Group items
@@ -430,12 +430,12 @@ export async function execute(interaction) {
     if (target.bot)           return interaction.reply({ content: "❌ You can't send coins to a bot.", ephemeral: true });
 
     await interaction.deferReply();
-    const eco = await getEconomy(userId, guildId);
+    const eco = await getEconomy(userId);
     if (Number(eco.coins) < amount) return interaction.editReply({ content: `❌ You only have **${fmt(eco.coins)}** 💠.` });
 
-    const targetEco = await getEconomy(target.id, guildId);
-    await updateEconomy(userId,    guildId, { coins: Number(eco.coins)       - amount });
-    await updateEconomy(target.id, guildId, { coins: Number(targetEco.coins) + amount });
+    const targetEco = await getEconomy(target.id);
+    await updateEconomy(userId,    { coins: Number(eco.coins)       - amount });
+    await updateEconomy(target.id, { coins: Number(targetEco.coins) + amount });
 
     const embed = new EmbedBuilder().setColor(NILOU_RED)
       .setTitle("✦ Coins Transferred 💠")
@@ -452,7 +452,7 @@ export async function execute(interaction) {
   // ── Leaderboard ──────────────────────────────────────────────────────────────
   if (sub === "leaderboard") {
     const type  = interaction.options.getString("type") || "coins";
-    const rows  = await getLeaderboard(guildId, type, 10);
+    const rows  = await getLeaderboard(type, 10);
     const label = { coins: "💠 Coins", theater_credits: "🎟️ Theater Credits", fame: "🎭 Fame", exp: "⭐ EXP" }[type];
     const medals = ["🥇","🥈","🥉"];
 

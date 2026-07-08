@@ -222,37 +222,37 @@ export async function getAllWarnings(guildId) {
   return r.rows;
 }
 
-// ─── Economy ───────────────────────────────────────────────────────────────────────────────────
-export async function getEconomy(userId, guildId) {
-  const r = await pool.query("SELECT * FROM economy WHERE user_id=$1 AND guild_id=$2", [userId, guildId]);
+// ─── Economy (user-wide, cross-server) ─────────────────────────────────────────────────────────
+export async function getEconomy(userId) {
+  const r = await pool.query("SELECT * FROM economy_users WHERE user_id=$1", [userId]);
   if (r.rows[0]) return r.rows[0];
   await pool.query(
-    "INSERT INTO economy (user_id, guild_id) VALUES ($1,$2) ON CONFLICT DO NOTHING",
-    [userId, guildId]
+    "INSERT INTO economy_users (user_id) VALUES ($1) ON CONFLICT DO NOTHING",
+    [userId]
   );
   return {
-    user_id: userId, guild_id: guildId,
+    user_id: userId,
     coins: 0, theater_credits: 0, fame: 0, exp: 0, level: 1, rank: "Stagehand",
     last_perform: 0, last_work: 0, last_daily: 0, daily_streak: 0, inventory: "[]",
   };
 }
-export async function updateEconomy(userId, guildId, fields) {
+export async function updateEconomy(userId, fields) {
   const keys = Object.keys(fields);
   if (!keys.length) return;
-  const setClauses = keys.map((k, i) => `${k} = $${i + 3}`).join(", ");
+  const setClauses = keys.map((k, i) => `${k} = $${i + 2}`).join(", ");
   await pool.query(
-    `INSERT INTO economy (user_id, guild_id, ${keys.join(", ")})
-     VALUES ($1, $2, ${keys.map((_, i) => `$${i + 3}`).join(", ")})
-     ON CONFLICT (user_id, guild_id) DO UPDATE SET ${setClauses}`,
-    [userId, guildId, ...keys.map(k => fields[k])]
+    `INSERT INTO economy_users (user_id, ${keys.join(", ")})
+     VALUES ($1, ${keys.map((_, i) => `$${i + 2}`).join(", ")})
+     ON CONFLICT (user_id) DO UPDATE SET ${setClauses}`,
+    [userId, ...keys.map(k => fields[k])]
   );
 }
-export async function getLeaderboard(guildId, field = "coins", limit = 10) {
+export async function getLeaderboard(field = "coins", limit = 10) {
   const ALLOWED = ["coins", "theater_credits", "fame", "exp", "level"];
   if (!ALLOWED.includes(field)) field = "coins";
   const r = await pool.query(
-    `SELECT * FROM economy WHERE guild_id=$1 ORDER BY ${field} DESC LIMIT $2`,
-    [guildId, limit]
+    `SELECT * FROM economy_users ORDER BY ${field} DESC LIMIT $1`,
+    [limit]
   );
   return r.rows;
 }
@@ -304,14 +304,53 @@ export async function ensureTables() {
     CREATE INDEX IF NOT EXISTS idx_music_plays_guild ON music_plays(guild_id);
   `;
   await pool.query(schema);
-  // Add missing economy columns gracefully
-  try { await pool.query("ALTER TABLE economy ADD COLUMN IF NOT EXISTS last_work BIGINT DEFAULT 0"); } catch {}
-  try { await pool.query("ALTER TABLE economy ADD COLUMN IF NOT EXISTS last_perform BIGINT DEFAULT 0"); } catch {}
-  try { await pool.query("ALTER TABLE economy ADD COLUMN IF NOT EXISTS last_daily BIGINT DEFAULT 0"); } catch {}
-  try { await pool.query("ALTER TABLE economy ADD COLUMN IF NOT EXISTS daily_streak INT DEFAULT 0"); } catch {}
-  try { await pool.query("ALTER TABLE economy ADD COLUMN IF NOT EXISTS rank VARCHAR(50) DEFAULT 'Stagehand'"); } catch {}
-  try { await pool.query("ALTER TABLE economy ADD COLUMN IF NOT EXISTS inventory TEXT DEFAULT '[]'"); } catch {}
-  console.log("\u2705 Auto-created user_activity and music_plays tables; economy columns verified");
+
+  // ─── Migrate economy from guild-scoped to user-wide ─────────────────────────────────────────────────────
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS economy_users (
+      user_id VARCHAR(50) PRIMARY KEY,
+      coins BIGINT DEFAULT 0,
+      theater_credits BIGINT DEFAULT 0,
+      fame BIGINT DEFAULT 0,
+      exp BIGINT DEFAULT 0,
+      level INT DEFAULT 1,
+      rank VARCHAR(50) DEFAULT 'Stagehand',
+      last_work BIGINT DEFAULT 0,
+      last_perform BIGINT DEFAULT 0,
+      last_daily BIGINT DEFAULT 0,
+      daily_streak INT DEFAULT 0,
+      inventory TEXT DEFAULT '[]'
+    )
+  `);
+
+  // One-time migration: for each user, keep the best guild record (highest level → exp → coins)
+  const oldRows = await pool.query("SELECT * FROM economy").catch(() => ({ rows: [] }));
+  if (oldRows.rows.length > 0) {
+    const byUser = new Map();
+    for (const row of oldRows.rows) {
+      const uid = row.user_id;
+      const existing = byUser.get(uid);
+      if (!existing) {
+        byUser.set(uid, row);
+      } else {
+        const score = r => (Number(r.level || 1) * 1_000_000) + (Number(r.exp || 0) * 1_000) + Number(r.coins || 0);
+        if (score(row) > score(existing)) byUser.set(uid, row);
+      }
+    }
+    for (const [uid, row] of byUser) {
+      await pool.query(
+        `INSERT INTO economy_users (user_id, coins, theater_credits, fame, exp, level, rank, last_work, last_perform, last_daily, daily_streak, inventory)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+         ON CONFLICT (user_id) DO NOTHING`,
+        [uid, row.coins || 0, row.theater_credits || 0, row.fame || 0, row.exp || 0, row.level || 1,
+         row.rank || 'Stagehand', row.last_work || 0, row.last_perform || 0, row.last_daily || 0,
+         row.daily_streak || 0, row.inventory || '[]']
+      );
+    }
+    console.log(`\u2705 Migrated ${byUser.size} users from guild-scoped economy to user-wide economy_users`);
+  }
+
+  console.log("\u2705 Auto-created user_activity, music_plays, economy_users tables; migration complete");
 }
 
 export async function getCountingSaves(guildId, userId) {

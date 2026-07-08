@@ -512,7 +512,7 @@ const server = createServer(async (req, res) => {
       const guildId = url.split("/api/economy/leaderboard/")[1];
       if (!guildId) { res.statusCode = 400; res.end(JSON.stringify({ error: "guildId required" })); return; }
       try {
-        const rows = await getLeaderboard(guildId, "coins", 10);
+        const rows = await getLeaderboard("coins", 10);
         res.end(JSON.stringify(rows));
       } catch { res.end(JSON.stringify([])); }
       return;

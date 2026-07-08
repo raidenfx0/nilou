@@ -315,8 +315,8 @@ export async function execute(interaction) {
                 const tcReward = Math.max(5, Math.floor(finalPoints / 2));
                 const coinsReward = finalPoints * 10;
                 try {
-                    const eco = await getEconomy(m.author.id, m.guildId);
-                    await updateEconomy(m.author.id, m.guildId, {
+                    const eco = await getEconomy(m.author.id);
+                    await updateEconomy(m.author.id, {
                         theater_credits: Number(eco.theater_credits) + tcReward,
                         coins: Number(eco.coins) + coinsReward,
                         fame: Number(eco.fame) + 5,

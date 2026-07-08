@@ -60,7 +60,7 @@ export async function execute(interaction) {
   if (cd) return interaction.reply({ content: `⏳ Cooldown! Wait **${cd}s** before gambling again.`, ephemeral: true });
 
   await interaction.deferReply();
-  const eco = await getEconomy(userId, guildId);
+  const eco = await getEconomy(userId);
 
   if (sub === "bet" || sub === "credits") {
     const amount   = interaction.options.getInteger("amount");
@@ -74,7 +74,7 @@ export async function execute(interaction) {
     const won    = result === side;
     const delta  = won ? amount : -amount;
 
-    await updateEconomy(userId, guildId, { [currency]: balance + delta });
+    await updateEconomy(userId, { [currency]: balance + delta });
 
     const embed = new EmbedBuilder().setColor(won ? 0x2ecc71 : 0xe74c3c)
       .setTitle(won ? `✦ You Won! ${E("NilouCheer", "🎉")}` : `✦ You Lost ${E("NilouDespair", "💧")}`)
@@ -105,7 +105,7 @@ export async function execute(interaction) {
 
     const won   = mult > 0;
     const gain  = won ? amount * mult - amount : -amount;
-    await updateEconomy(userId, guildId, { coins: balance + gain });
+    await updateEconomy(userId, { coins: balance + gain });
 
     const embed = new EmbedBuilder().setColor(won ? 0xf1c40f : 0xe74c3c)
       .setTitle(won ? `✦ JACKPOT! ${mult}× ${E("NilouDerpGun2", "🎰")}` : `✦ No Match ${E("NilouDespair", "💧")}`)
@@ -137,7 +137,7 @@ export async function execute(interaction) {
     if (betType === "green" && isGreen) { won = true; mult = 14; }
 
     const gain = won ? amount * mult - amount : -amount;
-    await updateEconomy(userId, guildId, { coins: balance + gain });
+    await updateEconomy(userId, { coins: balance + gain });
 
     const ballColor = isGreen ? "🟢" : isRed ? "🔴" : "⚫";
     const embed = new EmbedBuilder().setColor(won ? 0x2ecc71 : 0xe74c3c)

@@ -107,7 +107,7 @@ export async function execute(message) {
         countCfg.failedAt = countCfg.currentCount; countCfg.currentCount = 0; countCfg.lastUserId = null;
         countingChannels.set(guildId, countCfg);
         await upsertCountingConfig(guildId, { channel_id: countCfg.channelId, current_count: 0, last_user_id: null, failed_at: countCfg.failedAt });
-        setTimeout(() => msg.delete().catch(() => {}), 10000);
+        setTimeout(() => { msg.delete().catch(() => {}); message.delete().catch(() => {}); }, 10000);
         return;
       }
       if (input !== expected) {
@@ -118,7 +118,7 @@ export async function execute(message) {
         countCfg.failedAt = countCfg.currentCount; countCfg.currentCount = 0; countCfg.lastUserId = null;
         countingChannels.set(guildId, countCfg);
         await upsertCountingConfig(guildId, { channel_id: countCfg.channelId, current_count: 0, last_user_id: null, failed_at: countCfg.failedAt });
-        setTimeout(() => msg.delete().catch(() => {}), 12000);
+        setTimeout(() => { msg.delete().catch(() => {}); message.delete().catch(() => {}); }, 12000);
         return;
       }
       await message.react("✅");
@@ -138,7 +138,7 @@ export async function execute(message) {
   if (Date.now() - lastXp >= XP_COOLDOWN) {
     chatCooldowns.set(xpKey, Date.now());
     try {
-      const eco      = await getEconomy(userId, guildId);
+      const eco      = await getEconomy(userId);
       const oldExp   = Number(eco.exp);
       const newExp   = oldExp + XP_PER_MSG;
       const newCoins = Number(eco.coins) + COINS_PER_MSG;
@@ -166,7 +166,7 @@ export async function execute(message) {
         }
       }
 
-      await updateEconomy(userId, guildId, { exp: newExp, coins: newCoins, level: newLevel, rank: getRank(newLevel), theater_credits: newTC });
+      await updateEconomy(userId, { exp: newExp, coins: newCoins, level: newLevel, rank: getRank(newLevel), theater_credits: newTC });
     } catch {}
   }
 

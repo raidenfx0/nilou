@@ -135,11 +135,11 @@ export async function execute(interaction) {
       if (saves.saves >= MAX_PERSONAL_SAVES) {
         return interaction.reply({ content: `❌ You are at max saves (${MAX_PERSONAL_SAVES}). Use one first!`, ephemeral: true });
       }
-      const eco = await getEconomy(userId, guildId);
+      const eco = await getEconomy(userId);
       if (Number(eco.theater_credits) < SAVE_BUY_COST) {
         return interaction.reply({ content: `❌ You need **${SAVE_BUY_COST} 🎟️ Theater Credits** but only have ${eco.theater_credits}.`, ephemeral: true });
       }
-      await updateEconomy(userId, guildId, { theater_credits: Number(eco.theater_credits) - SAVE_BUY_COST });
+      await updateEconomy(userId, { theater_credits: Number(eco.theater_credits) - SAVE_BUY_COST });
       await upsertCountingSaves(guildId, userId, { saves: saves.saves + 1 });
       return interaction.reply({ content: `🎟️ Spent **${SAVE_BUY_COST} TC** to buy a save! You now have **${saves.saves + 1}/${MAX_PERSONAL_SAVES}** saves.`, ephemeral: true });
     }

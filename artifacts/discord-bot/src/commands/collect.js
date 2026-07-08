@@ -28,7 +28,7 @@ export async function execute(interaction) {
   const userId  = interaction.user.id;
   const guildId = interaction.guildId;
 
-  const eco = await getEconomy(userId, guildId);
+  const eco = await getEconomy(userId);
   const updates = {};
 
   let rewardText = "";
@@ -49,7 +49,7 @@ export async function execute(interaction) {
     rewardText = `🎁 **${drop.itemName}** added to your inventory!`;
   }
 
-  await updateEconomy(userId, guildId, updates);
+  await updateEconomy(userId, updates);
 
   // Delete the drop message
   if (drop.msgId) {
