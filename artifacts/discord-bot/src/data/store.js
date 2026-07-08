@@ -16,6 +16,9 @@ export const countingChannels  = new Map();
 // channelId → { guildId, amount, type, itemName, msgId, expiry }
 export const pendingDrops      = new Map();
 
+// guildId → { channelId }  (drops redirect target)
+export const dropChannels      = new Map();
+
 // guildId:emoji → { id, name, channelId, emoji, threshold, selfStar, enabled, blacklist[] }
 export const starboards = new Map();
 

@@ -39,6 +39,7 @@ const COMMANDS = {
     { cmd: "timeout",  desc: "Timeout a member" },
     { cmd: "warn",     desc: "Warn a member (point system)" },
     { cmd: "logging",  desc: "Configure event logging channels" },
+    { cmd: "starboard", desc: "Set up reaction starboards" },
   ],
   economy: [
     { cmd: "economy balance",    desc: "Check your balance" },
@@ -68,6 +69,7 @@ const COMMANDS = {
   ],
   management: [
     { cmd: "adminrole",      desc: "Set admin permission role" },
+    { cmd: "drops",          desc: "Redirect theater drops to a channel" },
     { cmd: "giveaway",       desc: "Run a button-based giveaway" },
     { cmd: "role",           desc: "Assign or remove roles" },
     { cmd: "sticky set",     desc: "Set an embed sticky message" },

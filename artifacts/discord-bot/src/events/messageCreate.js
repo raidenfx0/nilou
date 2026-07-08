@@ -1,5 +1,5 @@
 import { Events, EmbedBuilder, AttachmentBuilder } from "discord.js";
-import { stickyMessages, afkUsers, triggers, countingChannels, pendingDrops } from "../data/store.js";
+import { stickyMessages, afkUsers, triggers, countingChannels, pendingDrops, dropChannels } from "../data/store.js";
 import { NILOU_RED, FOOTER_STICKY, DIVIDER } from "../theme.js";
 import { getEconomy, updateEconomy, upsertCountingConfig, updateStickyLastMessage, upsertUserActivity } from "../db/index.js";
 import { createLevelCard } from "../utils/levelCard.js";
@@ -184,8 +184,19 @@ export async function execute(message) {
         .setDescription(`✨ **Theater Drop!**\n\n${template.text}\n\n*Expires in 2 minutes.*`)
         .setFooter({ text: "Use /collect to claim · First come first served" });
 
-      const dropMsg = await message.channel.send({ embeds: [embed] });
+      const redirect = dropChannels.get(guildId);
+      let dropMsg;
+      if (redirect) {
+        const redirectChannel = await message.guild.channels.fetch(redirect.channelId).catch(() => null);
+        if (redirectChannel?.isTextBased()) {
+          dropMsg = await redirectChannel.send({ embeds: [embed] });
+        }
+      }
+      if (!dropMsg) {
+        dropMsg = await message.channel.send({ embeds: [embed] });
+      }
 
+      // Store drop keyed by the channel it was triggered in so /collect works from there
       pendingDrops.set(channelId, {
         guildId, amount, type: template.type,
         itemName: null, itemId: null,

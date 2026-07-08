@@ -350,6 +350,12 @@ export async function ensureTables() {
     console.log(`\u2705 Migrated ${byUser.size} users from guild-scoped economy to user-wide economy_users`);
   }
 
+  // Ensure guild_settings has drops_channel_id column (nullable)
+  await pool.query(`
+    ALTER TABLE guild_settings
+    ADD COLUMN IF NOT EXISTS drops_channel_id VARCHAR(50)
+  `).catch(() => {});
+
   console.log("\u2705 Auto-created user_activity, music_plays, economy_users tables; migration complete");
 }
 
@@ -566,6 +572,8 @@ export async function hydrateStore(store) {
     });
   }
   for (const row of settings) {
+    if (row.drops_channel_id) store.dropChannels.set(row.guild_id, { channelId: row.drops_channel_id });
+
     if (row.admin_role_id) store.adminRoles.set(row.guild_id, row.admin_role_id);
 
     if (row.welcome_channel_id) {
