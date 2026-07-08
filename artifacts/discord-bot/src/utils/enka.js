@@ -88,30 +88,66 @@ export async function parseCharacters(data) {
 
     const artifactCV = artifacts.reduce((sum, a) => sum + a.cv, 0);
 
-    const weapon = (avatar.equipList || []).find(e => e.weapon);
-    const weaponIcon = weapon?.flat?.icon || "";
-    const weaponName = weapon?.flat?.nameTextMapHash || "";
+    // ── Weapon parsing ──────────────────────────────────────────────────────────
+    const weaponEntry = (avatar.equipList || []).find(e => e.weapon);
+    let weapon = null;
+    if (weaponEntry) {
+      const w = weaponEntry.weapon;
+      const flat = weaponEntry.flat;
+      const affixValues = Object.values(w.affixMap || {});
+      const refinement = affixValues.length > 0 ? affixValues[0] + 1 : 1;
+      weapon = {
+        icon:      flat.icon || "",
+        level:     w.level || 1,
+        rankLevel: flat.rankLevel || 1,
+        refinement,
+        stats:     (flat.weaponStats || []).map(s => ({
+          key:   s.appendPropId,
+          value: s.statValue,
+        })),
+      };
+    }
+
+    // ── Constellations ────────────────────────────────────────────────────────
+    const constellations = (avatar.talentElemList || []).length;
 
     const critRate = ((fightProp[20] || 0) * 100);
     const critDmg  = ((fightProp[22] || 0) * 100);
     const statsCV  = (critRate * 2) + critDmg;
 
+    // Elemental DMG bonus (highest among elements)
+    const elementKeys = [
+      { key: 30, name: "Pyro" },      { key: 40, name: "Hydro" },
+      { key: 41, name: "Anemo" },    { key: 42, name: "Electro" },
+      { key: 43, name: "Dendro" },   { key: 44, name: "Cryo" },
+      { key: 45, name: "Geo" },      { key: 46, name: "Physical" },
+    ];
+    let elementBonus = 0;
+    let elementName = "";
+    for (const el of elementKeys) {
+      const val = (fightProp[el.key] || 0) * 100;
+      if (val > elementBonus) { elementBonus = val; elementName = el.name; }
+    }
+
     return {
-      avatarId:   avatar.avatarId,
+      avatarId:       avatar.avatarId,
       name,
-      level:      parseInt(level),
-      icon:       `UI_AvatarIcon_${avatar.avatarId}`,
-      hp:         fightProp[2000] || fightProp[1] || 0,
-      atk:        fightProp[2001] || fightProp[4] || 0,
-      def:        fightProp[2002] || fightProp[7] || 0,
-      em:         fightProp[28]  || 0,
-      er:         ((fightProp[23] || 1) * 100).toFixed(1),
-      critRate:   critRate.toFixed(1),
-      critDmg:    critDmg.toFixed(1),
-      totalCV:    parseFloat(artifactCV.toFixed(1)),
-      statsCV:    parseFloat(statsCV.toFixed(1)),
+      level:          parseInt(level),
+      constellations,
+      icon:           `UI_AvatarIcon_${avatar.avatarId}`,
+      hp:             fightProp[2000] || fightProp[1] || 0,
+      atk:            fightProp[2001] || fightProp[4] || 0,
+      def:            fightProp[2002] || fightProp[7] || 0,
+      em:             fightProp[28]  || 0,
+      er:             ((fightProp[23] || 1) * 100).toFixed(1),
+      critRate:       critRate.toFixed(1),
+      critDmg:        critDmg.toFixed(1),
+      totalCV:        parseFloat(artifactCV.toFixed(1)),
+      statsCV:        parseFloat(statsCV.toFixed(1)),
+      elementBonus:   elementBonus.toFixed(1),
+      elementName,
       artifacts,
-      weaponIcon,
+      weapon,
     };
   }));
 }

@@ -30,21 +30,19 @@ export async function execute(interaction) {
     .setColor(NILOU_RED)
     .setTitle("✦ Artifact CV Calculator")
     .setDescription(
-      `${DIVIDER}\n` +
       `**CRIT Rate:** ${cr.toFixed(1)}%\n` +
       `**CRIT DMG:** ${cd.toFixed(1)}%\n\n` +
       `**Formula:** (${cr.toFixed(1)} × 2) + ${cd.toFixed(1)} = **${cv} CV**\n\n` +
-      `**Rating:** ${rating}\n` +
-      `${DIVIDER}`
+      `**Rating:** ${rating}`
     )
     .addFields({
       name: "📊 CV Rating Scale",
       value:
-        "🌱 Fledgling — below 100 CV\n" +
-        "✅ Good — 100–139 CV\n" +
-        "⭐ Great — 140–179 CV\n" +
-        "💎 Legendary — 180–219 CV\n" +
-        "🔱 Godly — 220+ CV",
+        "🌱 Fledgling — below 40 CV\n" +
+        "✅ Good — 40—54 CV\n" +
+        "⭐ Great — 55—69 CV\n" +
+        "💎 Legendary — 70—89 CV\n" +
+        "👑 Godly — 90+ CV",
       inline: false,
     })
     .setFooter(FOOTER_GENSHIN)

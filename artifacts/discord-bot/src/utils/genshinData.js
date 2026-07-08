@@ -84,6 +84,20 @@ export function getCharacterName(avatarId) {
 export function calcCV(reliquary) {
   if (!reliquary?.flat) return 0;
   let cr = 0, cd = 0;
+
+  // Only count substats (community standard: main stat is a choice, not quality)
+  for (const sub of (reliquary.flat.reliquarySubstats || [])) {
+    if (sub.appendPropId === "FIGHT_PROP_CRITICAL")      cr += sub.statValue;
+    if (sub.appendPropId === "FIGHT_PROP_CRITICAL_HURT") cd += sub.statValue;
+  }
+
+  return parseFloat(((cr * 2) + cd).toFixed(1));
+}
+
+export function calcCVWithMain(reliquary) {
+  if (!reliquary?.flat) return 0;
+  let cr = 0, cd = 0;
+
   for (const sub of (reliquary.flat.reliquarySubstats || [])) {
     if (sub.appendPropId === "FIGHT_PROP_CRITICAL")      cr += sub.statValue;
     if (sub.appendPropId === "FIGHT_PROP_CRITICAL_HURT") cd += sub.statValue;
@@ -101,7 +115,17 @@ export function calcCV(reliquary) {
 }
 
 export function rateCV(cv) {
-  if (cv >= 220) return "🔱 Godly";
+  // Per-artifact CV rating (substats only)
+  if (cv >= 65)  return "👑 Godly";
+  if (cv >= 50)  return "💎 Legendary";
+  if (cv >= 35)  return "⭐ Great";
+  if (cv >= 20)  return "✅ Good";
+  return "🌱 Fledgling";
+}
+
+export function rateTotalCV(cv) {
+  // Full build CV rating (substats across all 5 artifacts)
+  if (cv >= 220) return "👑 Godly";
   if (cv >= 180) return "💎 Legendary";
   if (cv >= 140) return "⭐ Great";
   if (cv >= 100) return "✅ Good";

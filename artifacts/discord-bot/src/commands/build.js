@@ -1,7 +1,7 @@
 import { SlashCommandBuilder, EmbedBuilder, AttachmentBuilder } from "discord.js";
 import { getUid } from "../db/uidStore.js";
 import { fetchProfile, parsePlayerInfo, parseCharacters } from "../utils/enka.js";
-import { rateCV, EQUIP_TYPE_NAMES, STAT_NAMES } from "../utils/genshinData.js";
+import { rateTotalCV, rateCV, EQUIP_TYPE_NAMES, STAT_NAMES } from "../utils/genshinData.js";
 import { generateBuildCard } from "../utils/buildCard.js";
 import { NILOU_RED, FOOTER_GENSHIN, DIVIDER } from "../theme.js";
 
@@ -99,6 +99,22 @@ export async function execute(interaction) {
     console.error("Canvas build card error:", err.message);
   }
 
+  // Weapon info line
+  let weaponLine = "No weapon data.";
+  if (character.weapon) {
+    const w = character.weapon;
+    const stars = "★".repeat(w.rankLevel || 1);
+    weaponLine = `R${w.refinement} ${stars} · Lv.${w.level}`;
+    if (w.stats && w.stats.length > 0) {
+      const s = w.stats[0];
+      const sName = STAT_NAMES[s.key] || s.key;
+      const sVal = ["FIGHT_PROP_HP_PERCENT","FIGHT_PROP_ATTACK_PERCENT","FIGHT_PROP_DEFENSE_PERCENT","FIGHT_PROP_CRITICAL","FIGHT_PROP_CRITICAL_HURT","FIGHT_PROP_CHARGE_EFFICIENCY","FIGHT_PROP_HEAL_ADD","FIGHT_PROP_FIRE_ADD_HURT","FIGHT_PROP_WATER_ADD_HURT","FIGHT_PROP_WIND_ADD_HURT","FIGHT_PROP_ELEC_ADD_HURT","FIGHT_PROP_ICE_ADD_HURT","FIGHT_PROP_ROCK_ADD_HURT","FIGHT_PROP_GRASS_ADD_HURT","FIGHT_PROP_PHYSICAL_ADD_HURT"].includes(s.key)
+        ? `${s.value.toFixed(1)}%` : Math.round(s.value);
+      weaponLine += ` · ${sName}: ${sVal}`;
+    }
+  }
+
+  // Artifact summary (substats only — community standard)
   const summaryLines = character.artifacts.map(art => {
     const crSub = art.subStats.find(s => s.key === "FIGHT_PROP_CRITICAL");
     const cdSub = art.subStats.find(s => s.key === "FIGHT_PROP_CRITICAL_HURT");
@@ -109,10 +125,10 @@ export async function execute(interaction) {
 
   const embed = new EmbedBuilder()
     .setColor(NILOU_RED)
-    .setTitle(`✦ ${character.name} Build Card`)
+    .setTitle(`✦ ${character.name} · C${character.constellations || 0}`)
     .setDescription(
       `${DIVIDER}\n` +
-      `🌸 Player: ${hideDetails ? "Hidden" : `${p.nickname} (\`${p.uid}\`)`} · AR${p.ar}\n` +
+      `Player: ${hideDetails ? "Hidden" : `${p.nickname} (\`${p.uid}\`)`} · AR${p.ar}\n` +
       `${DIVIDER}`
     )
     .addFields(
@@ -121,11 +137,18 @@ export async function execute(interaction) {
         value:
           `HP: **${Math.round(character.hp).toLocaleString()}** · ATK: **${Math.round(character.atk).toLocaleString()}** · DEF: **${Math.round(character.def).toLocaleString()}**\n` +
           `EM: **${Math.round(character.em)}** · ER: **${character.er}%**\n` +
-          `CR: **${character.critRate}%** · CD: **${character.critDmg}%** · Total CV: **${character.totalCV}** ${rateCV(character.totalCV)}`,
+          `CR: **${character.critRate}%** · CD: **${character.critDmg}%**` +
+          (character.elementBonus > 0 ? ` · ${character.elementName} DMG: **${character.elementBonus}%**` : "") +
+          `\nTotal CV: **${character.totalCV}** ${rateTotalCV(character.totalCV)}`,
         inline: false,
       },
       {
-        name: "🏆 Artifact CV Breakdown",
+        name: "🛡️ Weapon",
+        value: weaponLine,
+        inline: false,
+      },
+      {
+        name: "🏆 Artifact CV Breakdown (substats only)",
         value: summaryLines.length > 0 ? summaryLines.join("\n") : "No artifact data.",
         inline: false,
       }
@@ -133,9 +156,17 @@ export async function execute(interaction) {
     .setFooter(FOOTER_GENSHIN)
     .setTimestamp();
 
+  // Character thumbnail
+  const thumbUrl = `https://enka.network/ui/${character.icon}.png`;
+  try {
+    const head = await fetch(thumbUrl, { method: "HEAD" });
+    if (head.ok) embed.setThumbnail(thumbUrl);
+  } catch {}
+
   if (imageBuffer) {
-    const attachment = new AttachmentBuilder(imageBuffer, { name: `${character.name.replace(/ /g, "_")}_build.png` });
-    embed.setImage(`attachment://${character.name.replace(/ /g, "_")}_build.png`);
+    const safeName = character.name.replace(/[^a-zA-Z0-9_]/g, "_");
+    const attachment = new AttachmentBuilder(imageBuffer, { name: `${safeName}_build.png` });
+    embed.setImage(`attachment://${safeName}_build.png`);
     await interaction.editReply({ embeds: [embed], files: [attachment] });
   } else {
     await interaction.editReply({ embeds: [embed] });

@@ -1,7 +1,7 @@
 import { SlashCommandBuilder, EmbedBuilder } from "discord.js";
 import { getUid } from "../db/uidStore.js";
 import { fetchProfile, parsePlayerInfo, parseCharacters } from "../utils/enka.js";
-import { rateCV, STAT_NAMES } from "../utils/genshinData.js";
+import { rateCV, rateTotalCV, STAT_NAMES } from "../utils/genshinData.js";
 import { NILOU_RED, FOOTER_GENSHIN, DIVIDER } from "../theme.js";
 
 export const data = new SlashCommandBuilder()
