@@ -152,25 +152,126 @@ client.manager.shoukaku.on("close", (name, code, reason) => {
   console.warn(`⚠️ Lavalink Node "${name}" closed. Code: ${code}, Reason: ${reason || 'No reason'}`);
 });
 
-client.manager.on("playerStart", (player, track) => {
+client.manager.on("playerStart", async (player, track) => {
   const channel = client.channels.cache.get(player.textId);
-  if (channel) {
-    channel.send(`🌸 ✦ Now performing: **${track.title}**`).catch(() => {});
-  }
-  // Ensure VC status updates even when autoplay / next track starts
-  updateVoiceStatus(player, client, false, track);
-  // Record FM Bot-style play
-  const requester = track?.requester?.id;
   const guildId = player?.guildId;
-  if (requester && guildId) {
-    recordMusicPlay(requester, guildId, track.title, track.uri, track.author, track.duration || track.length)
+  const requester = track?.requester;
+  const requesterId = requester?.id;
+
+  // Build enriched embed
+  let embedTitle = track.title;
+  let embedArtist = track.author || "Unknown";
+  let embedThumbnail = track.thumbnail || null;
+  let embedAlbum = "";
+
+  // Try Spotify enrichment for linked users
+  if (requesterId) {
+    try {
+      const { getMusicConnection } = await import("./db/index.js");
+      const conn = await getMusicConnection(requesterId);
+      if (conn?.spotify_access_token && conn.spotify_expires_at > Date.now()) {
+        const { searchTrack } = await import("./utils/spotify.js");
+        const spTrack = await searchTrack(`${track.title} ${track.author || ""}`, conn.spotify_access_token);
+        if (spTrack) {
+          embedAlbum = spTrack.album?.name || "";
+          embedThumbnail = spTrack.album?.images?.[0]?.url || embedThumbnail;
+          embedArtist = spTrack.artists?.map(a => a.name).join(", ") || embedArtist;
+          embedTitle = spTrack.name || embedTitle;
+        }
+      }
+    } catch (e) {
+      // non-fatal
+    }
+  }
+
+  if (channel) {
+    const { EmbedBuilder } = await import("discord.js");
+    const { NILOU_RED, DIVIDER } = await import("./theme.js");
+    const np = new EmbedBuilder()
+      .setColor(NILOU_RED)
+      .setTitle("🌸 ✦ Now Performing")
+      .setDescription(
+        `${DIVIDER}\n**${embedTitle}**\nby **${embedArtist}**${embedAlbum ? `\n*from ${embedAlbum}*` : ""}\n${DIVIDER}`
+      )
+      .setFooter({ text: `Requested by ${requester?.username || "Audience"}` });
+    if (embedThumbnail) np.setThumbnail(embedThumbnail);
+    channel.send({ embeds: [np] }).catch(() => {});
+  }
+
+  // VC status
+  updateVoiceStatus(player, client, false, track);
+
+  // Record play
+  if (requesterId && guildId) {
+    recordMusicPlay(requesterId, guildId, track.title, track.uri, track.author, track.duration || track.length)
       .catch(err => console.error("❌ Music play record failed:", err.message));
   }
+
+  // Last.fm nowPlaying
+  if (requesterId) {
+    try {
+      const { getMusicConnection } = await import("./db/index.js");
+      const { updateNowPlaying, isConfigured } = await import("./utils/lastfm.js");
+      const { getScrobbleState } = await import("./commands/scrobble.js");
+      if (!isConfigured()) return;
+      const conn = await getMusicConnection(requesterId);
+      if (conn?.lastfm_session_key && getScrobbleState(guildId).enabled) {
+        await updateNowPlaying(conn.lastfm_session_key, track.title, track.author || "Unknown", "", track.duration || track.length || 0);
+      }
+    } catch (e) {
+      // non-fatal
+    }
+  }
+
+  // Store start time for scrobble threshold
+  player.data.set("_scrobbleStart", Date.now());
 });
 
-client.manager.on("playerEnd", (player, track) => {
-  // Clear between tracks so the next playerStart has a clean slate
+client.manager.on("playerEnd", async (player, track) => {
   updateVoiceStatus(player, client, true);
+
+  // Scrobble to Last.fm if played long enough
+  const start = player.data.get("_scrobbleStart");
+  const duration = track?.duration || track?.length || 0;
+  if (start && duration) {
+    const played = Date.now() - start;
+    const threshold = Math.min(30000, Math.floor(duration * 0.5));
+    if (played >= threshold && played >= 5000) {
+      const requesterId = track?.requester?.id;
+      const guildId = player?.guildId;
+      if (requesterId && guildId) {
+        try {
+          const { getMusicConnection } = await import("./db/index.js");
+          const { scrobble, isConfigured } = await import("./utils/lastfm.js");
+          const { getScrobbleState } = await import("./commands/scrobble.js");
+          if (!isConfigured()) return;
+          const conn = await getMusicConnection(requesterId);
+          const state = getScrobbleState(guildId);
+          if (conn?.lastfm_session_key && state.enabled) {
+            await scrobble(conn.lastfm_session_key, track.title, track.author || "Unknown", "", duration);
+            // Post to summary channel if configured
+            if (state.channelId) {
+              const summaryChannel = client.channels.cache.get(state.channelId);
+              if (summaryChannel) {
+                const { EmbedBuilder } = await import("discord.js");
+                const { NILOU_RED } = await import("./theme.js");
+                summaryChannel.send({
+                  embeds: [
+                    new EmbedBuilder()
+                      .setColor(NILOU_RED)
+                      .setDescription(`🎵 **${track.requester?.username || "Someone"}** scrobbled **${track.title}** to Last.fm`)
+                  ]
+                }).catch(() => {});
+              }
+            }
+          }
+        } catch (e) {
+          // non-fatal
+        }
+      }
+    }
+  }
+  player.data.delete("_scrobbleStart");
 });
 
 client.manager.on("playerEmpty", (player) => {
@@ -311,6 +412,25 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
     if (id.startsWith("help_")) {
       await handleHelpButton(interaction);
+      return;
+    }
+
+    if (id === "connect_lastfm") {
+      const url = (await import("./utils/lastfm.js")).getAuthUrl();
+      await interaction.reply({
+        content: `🎵 To connect Last.fm, visit this link and authorize the bot:\n**${url}**\n\nAfter authorizing, use **/scrobble on** to enable scrobbling.`,
+        ephemeral: true,
+      });
+      return;
+    }
+
+    if (id === "connect_spotify") {
+      const { getAuthUrl } = await import("../utils/spotify.js");
+      const url = getAuthUrl(`${process.env.BASE_URL || "https://nilou-bot-dashboard.replit.app"}/spotify/callback`, interaction.user.id);
+      await interaction.reply({
+        content: `🎵 To connect Spotify, visit this link and authorize the bot:\n**${url}**\n\nAfter authorizing, your now-playing cards will show album art and rich metadata.`,
+        ephemeral: true,
+      });
       return;
     }
 

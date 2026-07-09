@@ -356,7 +356,53 @@ export async function ensureTables() {
     ADD COLUMN IF NOT EXISTS drops_channel_id VARCHAR(50)
   `).catch(() => {});
 
+  // Ensure music_connections table for Last.fm / Spotify linking
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS music_connections (
+      user_id VARCHAR(50) PRIMARY KEY,
+      lastfm_username VARCHAR(100),
+      lastfm_session_key VARCHAR(200),
+      spotify_access_token VARCHAR(500),
+      spotify_refresh_token VARCHAR(500),
+      spotify_expires_at BIGINT DEFAULT 0,
+      connected_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `).catch(() => {});
+
   console.log("\u2705 Auto-created user_activity, music_plays, economy_users tables; migration complete");
+}
+
+export async function getMusicConnection(userId) {
+  const r = await pool.query("SELECT * FROM music_connections WHERE user_id=$1", [userId]);
+  return r.rows[0] || null;
+}
+export async function setLastFmConnection(userId, username, sessionKey) {
+  await pool.query(
+    `INSERT INTO music_connections (user_id, lastfm_username, lastfm_session_key)
+     VALUES ($1,$2,$3)
+     ON CONFLICT (user_id) DO UPDATE SET lastfm_username=$2, lastfm_session_key=$3, connected_at=NOW()`,
+    [userId, username, sessionKey]
+  );
+}
+export async function setSpotifyConnection(userId, accessToken, refreshToken, expiresAt) {
+  await pool.query(
+    `INSERT INTO music_connections (user_id, spotify_access_token, spotify_refresh_token, spotify_expires_at)
+     VALUES ($1,$2,$3,$4)
+     ON CONFLICT (user_id) DO UPDATE SET
+       spotify_access_token=$2,
+       spotify_refresh_token=$3,
+       spotify_expires_at=$4,
+       connected_at=NOW()`,
+    [userId, accessToken, refreshToken, expiresAt]
+  );
+}
+export async function getMusicConnectionsForUsers(userIds) {
+  if (!userIds?.length) return [];
+  const r = await pool.query(
+    "SELECT * FROM music_connections WHERE user_id = ANY($1)",
+    [userIds]
+  );
+  return r.rows;
 }
 
 export async function getCountingSaves(guildId, userId) {

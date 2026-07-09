@@ -9,12 +9,8 @@ plugins:
     allowDirectVideoIds: true
     allowDirectPlaylistIds: true
     clients:
-      - MUSIC
       - WEB
-      - ANDROID
-      - TV_EMBEDDED
-    oauth2:
-      enabled: false
+      - MUSIC
     signatureCipher:
       native: true
     pot:
@@ -26,6 +22,20 @@ plugins:
     playlistLoading:
       limit: 6
     reloadScriptOnConfigChange: true
+
+  lavasrc:
+    sources:
+      spotify: true
+      applemusic: false
+      deezer: false
+      yandexmusic: false
+      flowerytts: false
+    spotify:
+      clientId: "${SPOTIFY_CLIENT_ID:}"
+      clientSecret: "${SPOTIFY_CLIENT_SECRET:}"
+      countryCode: "US"
+      playlistLoadLimit: 6
+      albumLoadLimit: 6
 
 lavalink:
   server:

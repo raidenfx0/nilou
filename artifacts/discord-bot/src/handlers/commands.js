@@ -40,6 +40,11 @@ import * as countingCmd      from "../commands/counting.js";
 import * as collectCmd       from "../commands/collect.js";
 import * as starboardCmd     from "../commands/starboard.js";
 import * as dropsCmd         from "../commands/drops.js";
+import * as connectCmd       from "../commands/connect.js";
+import * as scrobbleCmd      from "../commands/scrobble.js";
+import * as nowplayingCmd    from "../commands/nowplaying.js";
+import * as fmCmd            from "../commands/fm.js";
+import * as fmrecentCmd      from "../commands/fmrecent.js";
 
 export function loadCommands(client) {
   client.commands = new Collection();
@@ -54,6 +59,7 @@ export function loadCommands(client) {
     roleCmd, echoCmd, emojihuntCmd,
     warnCmd, loggingCmd, economyCmd, gamblingCmd, countingCmd,
     collectCmd, starboardCmd, dropsCmd,
+    connectCmd, scrobbleCmd, nowplayingCmd, fmCmd, fmrecentCmd,
   ];
 
   for (const cmd of commands) {

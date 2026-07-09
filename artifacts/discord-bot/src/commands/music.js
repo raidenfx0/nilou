@@ -127,6 +127,7 @@ export const data = new SlashCommandBuilder()
             { name: "YouTube Music", value: "youtube_music" },
             { name: "YouTube", value: "youtube" },
             { name: "SoundCloud", value: "soundcloud" },
+            { name: "Spotify", value: "spsearch" },
           ),
       ),
   )
@@ -337,6 +338,11 @@ export async function execute(interaction) {
       case "insert": {
         let query = options.getString("query");
         let type = options.getString("type") || "youtube_music";
+
+        // Spotify search via lavasrc requires credentials; fallback gracefully
+        if (type === "spsearch" && (!process.env.SPOTIFY_CLIENT_ID || !process.env.SPOTIFY_CLIENT_SECRET)) {
+          type = "youtube_music";
+        }
 
         if (!player) {
           player = await manager.createPlayer({

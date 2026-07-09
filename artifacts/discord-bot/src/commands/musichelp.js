@@ -63,6 +63,12 @@ export async function execute(interaction) {
           value: 'm_config',
           emoji: '⚙️',
         },
+        {
+          label: 'Scrobbling & Spotify',
+          description: 'Last.fm scrobbling, now-playing, and Spotify.',
+          value: 'm_scrobble',
+          emoji: '🎵',
+        },
       ]),
   );
 
@@ -126,6 +132,18 @@ export async function execute(interaction) {
           "`/music autoplay` — Automatic discovery\n" +
           "`/music 247` — Stay on stage forever\n" +
           "`/music repeat <mode>` — Loop song or queue";
+        break;
+
+      case 'm_scrobble':
+        title = "🎵 Scrobbling & Spotify";
+        list = 
+          "`/connect` — Link your Last.fm or Spotify account\n" +
+          "`/scrobble on` — Enable Last.fm scrobbling (per-server)\n" +
+          "`/scrobble off` — Disable scrobbling\n" +
+          "`/nowplaying` — Rich now-playing card with album art\n" +
+          "`/fm` — View your Last.fm profile stats\n" +
+          "`/fmrecent` — Show your recently scrobbled tracks\n" +
+          "`/music play` — Use source `Spotify` for Spotify tracks!";
         break;
     }
 
