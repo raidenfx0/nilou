@@ -3,7 +3,18 @@ set -e
 
 cd "$(dirname "$0")"
 
-# Start Lavalink in the background if the jar exists
+# ─── Auto-install Java if missing (e.g. on Render) ────────────────────────────
+if ! command -v java &> /dev/null; then
+  echo "⚡ Java not found — downloading lightweight JRE..."
+  mkdir -p .jre && cd .jre
+  curl -sL -o jre.tar.gz "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.5%2B11/OpenJDK21U-jre_x64_linux_hotspot_21.0.5_11.tar.gz"
+  tar -xzf jre.tar.gz --strip-components=1
+  cd ..
+  export PATH="$(pwd)/.jre/bin:$PATH"
+  echo "✅ Java installed: $(java -version 2>&1 | head -1)"
+fi
+
+# ─── Start Lavalink in the background ───────────────────────────────────────
 if [ -f "lavalink/Lavalink.jar" ]; then
   echo "🎺 Starting local Lavalink server..."
   cd lavalink
@@ -22,6 +33,6 @@ if [ -f "lavalink/Lavalink.jar" ]; then
   done
 fi
 
-# Start the Discord bot (foreground)
+# ─── Start the Discord bot (foreground) ─────────────────────────────────────
 echo "🤖 Starting Nilou Bot..."
 node --enable-source-maps src/index.js
