@@ -2,11 +2,36 @@ server:
   port: 2333
   address: 0.0.0.0
 
+plugins:
+  youtube:
+    enabled: true
+    allowSearch: true
+    allowDirectVideoIds: true
+    allowDirectPlaylistIds: true
+    clients:
+      - MUSIC
+      - WEB
+      - ANDROID
+      - TV_EMBEDDED
+    oauth2:
+      enabled: false
+    signatureCipher:
+      native: true
+    pot:
+      enabled: false
+    mpeg-dash:
+      enabled: false
+      redir: false
+    countryCode: "US"
+    playlistLoading:
+      limit: 6
+    reloadScriptOnConfigChange: true
+
 lavalink:
   server:
     password: "niloubot-lavalink-2026"
     sources:
-      youtube: true
+      youtube: false
       bandcamp: true
       soundcloud: true
       twitch: true
@@ -15,9 +40,7 @@ lavalink:
       local: false
     bufferDurationMs: 400
     frameBufferDurationMs: 5000
-    youtubePlaylistLoadLimit: 6
     playerUpdateInterval: 5
-    youtubeSearchEnabled: true
     soundcloudSearchEnabled: true
     gc-warnings: true
 
