@@ -1,0 +1,32 @@
+Act as a Discord.js (v14) bot developer. Build a full-featured Giveaway Module using Slash Commands, Discord Embeds, Buttons, and MongoDB (or SQLite). 
+
+The system should replicate key features from 'Giveaway Boat' as detailed below:
+
+1. CORE SLASH COMMANDS
+• /giveaway start: Launches a giveaway setup (Duration, Winners, Prize, Channel, Host).
+• /giveaway end [message_id]: Force-ends a giveaway immediately and picks winners.
+• /giveaway reroll [message_id]: Selects new winner(s) from valid entries.
+• /giveaway list: Shows active giveaways in the server.
+
+2. EMBED DISPLAY & UI LAYOUT
+• Render an Embed containing:
+  - Title: Prize Name
+  - Instructions: "Click 🎉 button to enter!"
+  - Details: Winners count, Hosted by (@user), Ends timestamp (<t:TIMESTAMP:R>)
+  - Extra Entries Breakdown: Display roles with bonus entries (e.g., @Server Booster: +3 entries).
+  - Entry Requirements: List conditions (e.g., Required Role, Excluded/Muted Role, Bypass Role, Level requirement, Message count).
+• Include Interactive Components (ActionRow Buttons):
+  - Primary Button (🎉): Displays current entry/participant count. Clicking toggles user entry.
+  - Secondary Button ("Participants"): Triggers an ephemeral embed listing entries with total ticket weight (e.g., 1. @user (4 entries)). Support pagination if entries exceed 10.
+
+3. ENTRY VALIDATION & WEIGHTING LOGIC
+• Check required roles, blacklist/muted roles, and bypass roles before confirming entry.
+• Calculate total ticket weight per user based on bonus entry roles (e.g., Base = 1 ticket, Booster = +3 tickets -> total 4 tickets in the weighted draw pool).
+• Send an ephemeral message confirming entry status or detailing missing requirements upon button click.
+
+4. END CONDITIONS & AUTOMATION
+• Automatically trigger drawing logic when timer expires.
+• Use weighted random selection (based on extra entries/tickets) to select unique winners without duplication.
+• Edit the original message to announce winners and post a winner message directly in the channel.
+
+Provide clean, modular JavaScript code using Discord.js v14 with full database persistence (saving active giveaways to survive bot restarts).
