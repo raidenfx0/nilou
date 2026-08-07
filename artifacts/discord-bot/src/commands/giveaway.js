@@ -5,48 +5,102 @@ import {
 import { NILOU_RED, FOOTER_MAIN, DIVIDER } from "../theme.js";
 import { isAdmin, denyAdmin } from "../utils/adminCheck.js";
 import { giveaways } from "../data/store.js";
-import { upsertGiveaway, getUserActivity } from "../db/index.js";
+import {
+  upsertGiveaway,
+  getUserActivity,
+  getUserActivityCounts,
+  getEconomy,
+} from "../db/index.js";
+
+const DAY = 86400000;
+const MAX_PARTICIPANTS_PER_PAGE = 10;
 
 function parseDuration(str) {
-  const match = str.match(/^(\d+)(s|m|h|d)$/i);
+  const match = String(str || "").match(/^(\d+)(s|m|h|d|w)$/i);
   if (!match) return null;
-  const val = parseInt(match[1]);
-  const multipliers = { s: 1000, m: 60000, h: 3600000, d: 86400000 };
-  return val * multipliers[match[2].toLowerCase()];
+  const value = Number(match[1]);
+  const multipliers = { s: 1000, m: 60000, h: 3600000, d: DAY, w: DAY * 7 };
+  const duration = value * multipliers[match[2].toLowerCase()];
+  return duration > 0 && duration <= DAY * 365 ? duration : null;
 }
 
-function buildGiveawayEmbed(gw) {
-  const endTs   = Math.floor(gw.endTime / 1000);
-  const ended   = Date.now() >= gw.endTime;
-  const count   = gw.entrants instanceof Set ? gw.entrants.size : (gw.entrants?.length ?? 0);
-  const entryText = gw.roleBonus && Object.keys(gw.roleBonus).length > 0
-    ? `Entries: **${count}** (role bonus active)`
-    : `Entries: **${count}**`;
+function entrantSet(gw) {
+  return gw.entrants instanceof Set ? gw.entrants : new Set(gw.entrants || []);
+}
+
+function getBonusEntries(gw, member) {
+  let bonus = 0;
+  for (const [roleId, amount] of Object.entries(gw.roleBonus || {})) {
+    if (member?.roles?.cache?.has(roleId)) bonus += Number(amount) || 0;
+  }
+  return bonus;
+}
+
+function getEntryWeight(gw, member) {
+  return 1 + getBonusEntries(gw, member);
+}
+
+function totalTickets(gw) {
+  return [...entrantSet(gw)].reduce((total, id) => total + Number(gw.entryWeights?.[id] || 1), 0);
+}
+
+function roleLabel(guild, roleId) {
+  return roleId ? `<@&${roleId}>` : null;
+}
+
+function requirementLines(gw, guild) {
+  const lines = [];
+  if (gw.requiredRoleId) lines.push(`Must have the role: ${roleLabel(guild, gw.requiredRoleId)}`);
+  if (gw.excludedRoleId) lines.push(`Must not have the role: ${roleLabel(guild, gw.excludedRoleId)}`);
+  if (gw.minLevel > 0) lines.push(`Must be level **${gw.minLevel}** or above`);
+  if (gw.dailyMessages > 0) lines.push(`Must have sent **${gw.dailyMessages}** message${gw.dailyMessages === 1 ? "" : "s"} today`);
+  if (gw.monthlyMessages > 0) lines.push(`Must have sent **${gw.monthlyMessages}** message${gw.monthlyMessages === 1 ? "" : "s"} this month`);
+  if (gw.minDays > 0) lines.push(`Must have been active within the last **${gw.minDays} day${gw.minDays === 1 ? "" : "s"}**`);
+  return lines;
+}
+
+function buildGiveawayEmbed(gw, guild = null) {
+  const endTs = Math.floor(gw.endTime / 1000);
+  const ended = Boolean(gw.ended || Date.now() >= gw.endTime);
+  const participants = entrantSet(gw).size;
+  const bonusLines = Object.entries(gw.roleBonus || {}).map(
+    ([roleId, amount]) => `${roleLabel(guild, roleId) || `<@&${roleId}>`}: **+${amount} entries**`,
+  );
+  const requirements = requirementLines(gw, guild);
+  const parts = [
+    `Click 🎉 button to enter!`,
+    `Winners: **${gw.winnerCount}**`,
+    `Hosted by: <@${gw.hostId}>`,
+    ended ? "Status: **Ended**" : `Ends: <t:${endTs}:R> (<t:${endTs}:F>)`,
+    "",
+    `Participants: **${participants}** · Tickets: **${totalTickets(gw)}**`,
+  ];
+  if (bonusLines.length) parts.push("", "**Extra Entries:**", bonusLines.join("\n"));
+  if (requirements.length) parts.push("", "**Requirements:**", requirements.join("\n"));
+  if (gw.bypassRoleId && requirements.length) {
+    parts.push(`Requirements Bypass Role: ${roleLabel(guild, gw.bypassRoleId)}`);
+  }
 
   return new EmbedBuilder()
     .setColor(NILOU_RED)
-    .setTitle(`🎊 ✦ GIVEAWAY — ${gw.prize}`)
-    .setDescription(
-      `${DIVIDER}\n` +
-      `Click **Enter Giveaway** below to enter!\n\n` +
-      `Winners: **${gw.winnerCount}**\n` +
-      entryText + `\n` +
-      `Hosted by: <@${gw.hostId}>\n` +
-      (ended ? `Status: **Ended**` : `Ends: <t:${endTs}:R> (<t:${endTs}:F>)`) +
-      (gw.minDays > 0 ? `\n*Requirement: Active in last ${gw.minDays} day(s)*` : "") +
-      `\n${DIVIDER}`
-    )
-    .setFooter({ text: ended ? "🌸 Giveaway Ended" : "🌸 Click the button to enter!" })
+    .setTitle(`🎊 ✦ ${gw.prize}`)
+    .setDescription(`${DIVIDER}\n${parts.join("\n")}\n${DIVIDER}`)
+    .setFooter({ text: ended ? "🌸 Giveaway Ended" : "🌸 Enter for a chance to win!" })
     .setTimestamp();
 }
 
-function buildGiveawayRow(messageId, ended = false) {
+function buildGiveawayRow(messageId, gw, ended = false) {
+  const count = entrantSet(gw).size;
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`gw_enter:${messageId}`)
-      .setLabel("Enter Giveaway 🎉")
+      .setLabel(`🎉 ${count}`)
       .setStyle(ButtonStyle.Primary)
       .setDisabled(ended),
+    new ButtonBuilder()
+      .setCustomId(`gw_participants:${messageId}:0`)
+      .setLabel("Participants")
+      .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId(`gw_leave:${messageId}`)
       .setLabel("Leave")
@@ -55,27 +109,58 @@ function buildGiveawayRow(messageId, ended = false) {
   );
 }
 
+function buildParticipantEmbed(gw, guild, page = 0) {
+  const ids = [...entrantSet(gw)];
+  const totalPages = Math.max(1, Math.ceil(ids.length / MAX_PARTICIPANTS_PER_PAGE));
+  const safePage = Math.max(0, Math.min(Number(page) || 0, totalPages - 1));
+  const slice = ids.slice(safePage * MAX_PARTICIPANTS_PER_PAGE, (safePage + 1) * MAX_PARTICIPANTS_PER_PAGE);
+  const lines = slice.length
+    ? slice.map((id, index) => {
+      const member = guild?.members?.cache?.get(id);
+      const weight = Number(gw.entryWeights?.[id] || getEntryWeight(gw, member));
+      return `**${safePage * MAX_PARTICIPANTS_PER_PAGE + index + 1}.** <@${id}> · **${weight} ${weight === 1 ? "entry" : "entries"}**`;
+    }).join("\n")
+    : "No one has entered yet.";
+
+  return {
+    embed: new EmbedBuilder()
+      .setColor(NILOU_RED)
+      .setTitle(`🎊 Giveaway Participants — Page ${safePage + 1}/${totalPages}`)
+      .setDescription(`${lines}\n\n**Total participants:** ${ids.length}\n**Total tickets:** ${totalTickets(gw)}`)
+      .setFooter(FOOTER_MAIN),
+    page: safePage,
+    totalPages,
+  };
+}
+
+function buildParticipantRow(messageId, page, totalPages) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(`gw_participants:${messageId}:${page - 1}`).setLabel("Previous").setStyle(ButtonStyle.Secondary).setDisabled(page <= 0),
+    new ButtonBuilder().setCustomId(`gw_participants:${messageId}:${page + 1}`).setLabel("Next").setStyle(ButtonStyle.Secondary).setDisabled(page >= totalPages - 1),
+  );
+}
+
 export const data = new SlashCommandBuilder()
   .setName("giveaway")
   .setDescription("Giveaway management")
-  .addSubcommand(sub =>
-    sub.setName("start").setDescription("Start a giveaway (admin only)")
-      .addStringOption(o => o.setName("prize").setDescription("What are you giving away?").setRequired(true))
-      .addStringOption(o => o.setName("duration").setDescription("Duration e.g. 1h, 30m, 2d").setRequired(true))
-      .addIntegerOption(o => o.setName("winners").setDescription("Number of winners").setMinValue(1).setMaxValue(20))
-      .addChannelOption(o => o.setName("channel").setDescription("Channel to post in"))
-      .addRoleOption(o => o.setName("bonus_role").setDescription("Role that gets bonus entries"))
-      .addIntegerOption(o => o.setName("bonus_entries").setDescription("Number of extra entries for bonus role").setMinValue(1).setMaxValue(10))
-      .addIntegerOption(o => o.setName("min_days").setDescription("Min days of activity to join (0 = none)").setMinValue(0).setMaxValue(30))
-  )
-  .addSubcommand(sub =>
-    sub.setName("end").setDescription("End a giveaway early (admin only)")
-      .addStringOption(o => o.setName("message_id").setDescription("Message ID of the giveaway").setRequired(true))
-  )
-  .addSubcommand(sub =>
-    sub.setName("reroll").setDescription("Reroll winners (admin only)")
-      .addStringOption(o => o.setName("message_id").setDescription("Message ID of the giveaway").setRequired(true))
-  )
+  .addSubcommand(sub => sub.setName("start").setDescription("Start a giveaway (admin only)")
+    .addStringOption(o => o.setName("prize").setDescription("What are you giving away?").setRequired(true))
+    .addStringOption(o => o.setName("duration").setDescription("Examples: 1h, 30m, 2d, 1w").setRequired(true))
+    .addIntegerOption(o => o.setName("winners").setDescription("Number of winners").setMinValue(1).setMaxValue(20))
+    .addChannelOption(o => o.setName("channel").setDescription("Channel to post in"))
+    .addRoleOption(o => o.setName("bonus_role").setDescription("Role that gets bonus entries"))
+    .addIntegerOption(o => o.setName("bonus_entries").setDescription("Extra entries for the bonus role").setMinValue(1).setMaxValue(20))
+    .addRoleOption(o => o.setName("required_role").setDescription("Role required to enter"))
+    .addRoleOption(o => o.setName("excluded_role").setDescription("Role that cannot enter"))
+    .addRoleOption(o => o.setName("bypass_role").setDescription("Role that bypasses positive requirements"))
+    .addIntegerOption(o => o.setName("min_level").setDescription("Minimum Nilou level").setMinValue(0).setMaxValue(100))
+    .addIntegerOption(o => o.setName("daily_messages").setDescription("Messages required today").setMinValue(0).setMaxValue(10000))
+    .addIntegerOption(o => o.setName("monthly_messages").setDescription("Messages required this month").setMinValue(0).setMaxValue(100000))
+    .addIntegerOption(o => o.setName("min_days").setDescription("Must have been active within this many days").setMinValue(0).setMaxValue(30)))
+  .addSubcommand(sub => sub.setName("end").setDescription("End a giveaway early (admin only)")
+    .addStringOption(o => o.setName("message_id").setDescription("Giveaway message ID").setRequired(true)))
+  .addSubcommand(sub => sub.setName("reroll").setDescription("Reroll winners (admin only)")
+    .addStringOption(o => o.setName("message_id").setDescription("Giveaway message ID").setRequired(true)))
   .addSubcommand(sub => sub.setName("list").setDescription("List active giveaways"));
 
 export async function execute(interaction) {
@@ -83,199 +168,177 @@ export async function execute(interaction) {
 
   if (sub === "start") {
     if (!isAdmin(interaction.member)) return denyAdmin(interaction);
+    const duration = parseDuration(interaction.options.getString("duration"));
+    if (!duration) return interaction.reply({ content: "❌ Invalid duration. Use `1h`, `30m`, `2d`, or `1w` (maximum 365 days).", ephemeral: true });
 
-    const prize       = interaction.options.getString("prize");
-    const durationStr = interaction.options.getString("duration");
-    const winnerCount = interaction.options.getInteger("winners") || 1;
-    const channel     = interaction.options.getChannel("channel") || interaction.channel;
-    const bonusRole   = interaction.options.getRole("bonus_role");
-    const bonusEntries = interaction.options.getInteger("bonus_entries") || 1;
-    const minDays     = interaction.options.getInteger("min_days") || 0;
-
-    const duration = parseDuration(durationStr);
-    if (!duration) return interaction.reply({ content: "❌ Invalid duration. Use `1h`, `30m`, `2d`, `10s`.", ephemeral: true });
-
-    await interaction.deferReply({ ephemeral: true });
-
+    const channel = interaction.options.getChannel("channel") || interaction.channel;
+    const bonusRole = interaction.options.getRole("bonus_role");
     const endTime = Date.now() + duration;
-    const gwData  = {
-      prize, winnerCount, endTime,
-      hostId: interaction.user.id,
-      guildId: interaction.guildId,
-      channelId: channel.id,
-      ended: false,
-      entrants: new Set(),
-      winners: [],
-      roleBonus: bonusRole ? { [bonusRole.id]: bonusEntries } : {},
-      minDays: minDays,
+    const gw = {
+      prize: interaction.options.getString("prize"),
+      winnerCount: interaction.options.getInteger("winners") || 1,
+      endTime, hostId: interaction.user.id, guildId: interaction.guildId, channelId: channel.id,
+      ended: false, entrants: new Set(), winners: [], entryWeights: {},
+      roleBonus: bonusRole ? { [bonusRole.id]: interaction.options.getInteger("bonus_entries") || 1 } : {},
+      requiredRoleId: interaction.options.getRole("required_role")?.id || null,
+      excludedRoleId: interaction.options.getRole("excluded_role")?.id || null,
+      bypassRoleId: interaction.options.getRole("bypass_role")?.id || null,
+      minLevel: interaction.options.getInteger("min_level") || 0,
+      dailyMessages: interaction.options.getInteger("daily_messages") || 0,
+      monthlyMessages: interaction.options.getInteger("monthly_messages") || 0,
+      minDays: interaction.options.getInteger("min_days") || 0,
     };
 
-    const embed = buildGiveawayEmbed(gwData);
-    const msg   = await channel.send({ embeds: [embed], components: [buildGiveawayRow("TEMP")] });
-
-    gwData.messageId = msg.id;
-    await msg.edit({ components: [buildGiveawayRow(msg.id)] });
-
-    giveaways.set(msg.id, gwData);
-    await upsertGiveaway({ ...gwData, entrants: [...gwData.entrants] });
-
-    gwData.timer = setTimeout(() => endGiveaway(interaction.client, msg.id), duration);
-    giveaways.set(msg.id, gwData);
-
-    await interaction.editReply({ content: `🌸 Giveaway started in ${channel}! 🎊` + (bonusRole ? ` Bonus role: ${bonusRole.name} (+${bonusEntries} entries)` : "") + (minDays > 0 ? ` Requires ${minDays} day(s) activity.` : "") });
+    await interaction.deferReply({ ephemeral: true });
+    const message = await channel.send({ embeds: [buildGiveawayEmbed(gw, interaction.guild)], components: [buildGiveawayRow("TEMP", gw)] });
+    gw.messageId = message.id;
+    await message.edit({ components: [buildGiveawayRow(message.id, gw)] });
+    giveaways.set(message.id, gw);
+    await upsertGiveaway(gw);
+    gw.timer = setTimeout(() => endGiveaway(interaction.client, message.id), duration);
+    await interaction.editReply({ content: `🌸 Giveaway started in ${channel}! Use the 🎉 button to enter.` });
     return;
   }
 
   if (sub === "end") {
     if (!isAdmin(interaction.member)) return denyAdmin(interaction);
-    const msgId = interaction.options.getString("message_id");
-    const gw    = giveaways.get(msgId);
+    const id = interaction.options.getString("message_id");
+    const gw = giveaways.get(id);
     if (!gw) return interaction.reply({ content: "❌ No giveaway found with that message ID.", ephemeral: true });
     if (gw.timer) clearTimeout(gw.timer);
-    await endGiveaway(interaction.client, msgId);
-    await interaction.reply({ content: "🌸 Giveaway ended!", ephemeral: true });
-    return;
+    await endGiveaway(interaction.client, id);
+    return interaction.reply({ content: "🌸 Giveaway ended.", ephemeral: true });
   }
 
   if (sub === "reroll") {
     if (!isAdmin(interaction.member)) return denyAdmin(interaction);
-    const msgId = interaction.options.getString("message_id");
-    const gw    = giveaways.get(msgId);
+    const id = interaction.options.getString("message_id");
+    const gw = giveaways.get(id);
     if (!gw || !gw.ended) return interaction.reply({ content: "❌ No ended giveaway found.", ephemeral: true });
-    await rerollGiveaway(interaction.client, msgId, interaction.channel);
-    await interaction.reply({ content: "🌸 Giveaway rerolled!", ephemeral: true });
-    return;
+    await rerollGiveaway(interaction.client, id, interaction.channel);
+    return interaction.reply({ content: "🌸 Giveaway rerolled.", ephemeral: true });
   }
 
-  if (sub === "list") {
-    const active = [...giveaways.values()].filter(g => g.guildId === interaction.guildId && !g.ended);
-    if (active.length === 0) return interaction.reply({ content: "💧 No active giveaways right now.", ephemeral: true });
-    const embed = new EmbedBuilder()
-      .setColor(NILOU_RED)
-      .setTitle("✦ Active Giveaways")
-      .setDescription(active.map(g =>
-        `🎊 **${g.prize}** — <#${g.channelId}> — ${g.entrants instanceof Set ? g.entrants.size : 0} entries — Ends <t:${Math.floor(g.endTime / 1000)}:R>`
-      ).join("\n"))
-      .setFooter(FOOTER_MAIN)
-      .setTimestamp();
-    await interaction.reply({ embeds: [embed], ephemeral: true });
+  const active = [...giveaways.values()].filter(g => g.guildId === interaction.guildId && !g.ended);
+  if (!active.length) return interaction.reply({ content: "💧 No active giveaways right now.", ephemeral: true });
+  const embed = new EmbedBuilder()
+    .setColor(NILOU_RED).setTitle("✦ Active Giveaways")
+    .setDescription(active.map(g => `🎊 **${g.prize}** — <#${g.channelId}> — ${entrantSet(g).size} participants / ${totalTickets(g)} tickets — Ends <t:${Math.floor(g.endTime / 1000)}:R>`).join("\n"))
+    .setFooter(FOOTER_MAIN).setTimestamp();
+  return interaction.reply({ embeds: [embed], ephemeral: true });
+}
+
+async function checkEligibility(interaction, gw) {
+  const member = await interaction.guild.members.fetch(interaction.user.id);
+  if (member.user.bot) return { ok: false, reason: "Bots cannot enter giveaways." };
+  if (gw.excludedRoleId && member.roles.cache.has(gw.excludedRoleId)) return { ok: false, reason: `You cannot enter while you have <@&${gw.excludedRoleId}>.` };
+
+  const bypasses = gw.bypassRoleId && member.roles.cache.has(gw.bypassRoleId);
+  if (!bypasses && gw.requiredRoleId && !member.roles.cache.has(gw.requiredRoleId)) {
+    return { ok: false, reason: `You need <@&${gw.requiredRoleId}> to enter.` };
   }
+  if (!bypasses && gw.minLevel > 0) {
+    const economy = await getEconomy(interaction.user.id);
+    if (Number(economy.level || 1) < gw.minLevel) return { ok: false, reason: `You need to be level ${gw.minLevel} or higher.` };
+  }
+  if (!bypasses && (gw.dailyMessages > 0 || gw.monthlyMessages > 0)) {
+    const counts = await getUserActivityCounts(gw.guildId, interaction.user.id);
+    if (gw.dailyMessages > 0 && Number(counts?.daily_message_count || 0) < gw.dailyMessages) {
+      return { ok: false, reason: `You need ${gw.dailyMessages} messages today; you have ${Number(counts?.daily_message_count || 0)}.` };
+    }
+    if (gw.monthlyMessages > 0 && Number(counts?.monthly_message_count || 0) < gw.monthlyMessages) {
+      return { ok: false, reason: `You need ${gw.monthlyMessages} messages this month; you have ${Number(counts?.monthly_message_count || 0)}.` };
+    }
+  }
+  if (!bypasses && gw.minDays > 0) {
+    const activity = await getUserActivity(gw.guildId, interaction.user.id, Date.now() - gw.minDays * DAY);
+    if (!activity) return { ok: false, reason: `You need activity within the last ${gw.minDays} day${gw.minDays === 1 ? "" : "s"}.` };
+  }
+  return { ok: true, member };
 }
 
 export async function handleGiveawayButton(interaction) {
-  const [action, messageId] = interaction.customId.split(":");
+  const [action, messageId, page] = interaction.customId.split(":");
   const gw = giveaways.get(messageId);
-  if (!gw || gw.ended) {
-    return interaction.reply({ content: "❌ This giveaway is no longer active.", ephemeral: true });
+  if (!gw) return interaction.reply({ content: "❌ This giveaway could not be found.", ephemeral: true });
+
+  if (action === "gw_participants") {
+    const view = buildParticipantEmbed(gw, interaction.guild, Number(page) || 0);
+    return interaction.reply({ embeds: [view.embed], components: [buildParticipantRow(messageId, view.page, view.totalPages)], ephemeral: true });
   }
+  if (gw.ended) return interaction.reply({ content: "❌ This giveaway is no longer active.", ephemeral: true });
 
-  const userId = interaction.user.id;
-  if (!gw.entrants) gw.entrants = new Set();
-
+  const entrants = entrantSet(gw);
   if (action === "gw_enter") {
-    if (gw.entrants.has(userId)) {
-      return interaction.reply({ content: "You are already entered in this giveaway! Use Leave to withdraw.", ephemeral: true });
-    }
-
-    // Check activity requirement
-    if (gw.minDays > 0) {
-      const since = Date.now() - (gw.minDays * 86400000);
-      const activity = await getUserActivity(gw.guildId, userId, since);
-      if (!activity || activity.message_count < 1) {
-        return interaction.reply({ content: `❌ You need to be active in the last ${gw.minDays} day(s) to join this giveaway.`, ephemeral: true });
-      }
-    }
-
-    gw.entrants.add(userId);
+    if (entrants.has(interaction.user.id)) return interaction.reply({ content: "You are already entered. Use Leave to withdraw.", ephemeral: true });
+    const eligibility = await checkEligibility(interaction, gw);
+    if (!eligibility.ok) return interaction.reply({ content: `❌ ${eligibility.reason}`, ephemeral: true });
+    entrants.add(interaction.user.id);
+    gw.entrants = entrants;
+    gw.entryWeights[interaction.user.id] = getEntryWeight(gw, eligibility.member);
     giveaways.set(messageId, gw);
-    await upsertGiveaway({ ...gw, entrants: [...gw.entrants] });
-
-    await interaction.message.edit({
-      embeds: [buildGiveawayEmbed(gw)],
-      components: [buildGiveawayRow(messageId)],
-    });
-    return interaction.reply({ content: `🎉 You're entered in the **${gw.prize}** giveaway! Good luck~`, ephemeral: true });
+    await upsertGiveaway(gw);
+    await interaction.message.edit({ embeds: [buildGiveawayEmbed(gw, interaction.guild)], components: [buildGiveawayRow(messageId, gw)] });
+    return interaction.reply({ content: `🎉 You are entered in **${gw.prize}** with **${gw.entryWeights[interaction.user.id]} ${gw.entryWeights[interaction.user.id] === 1 ? "ticket" : "tickets"}**. Good luck!`, ephemeral: true });
   }
-
   if (action === "gw_leave") {
-    if (!gw.entrants.has(userId)) {
-      return interaction.reply({ content: "You are not entered in this giveaway.", ephemeral: true });
-    }
-    gw.entrants.delete(userId);
-    giveaways.set(messageId, gw);
-    await upsertGiveaway({ ...gw, entrants: [...gw.entrants] });
-
-    await interaction.message.edit({
-      embeds: [buildGiveawayEmbed(gw)],
-      components: [buildGiveawayRow(messageId)],
-    });
+    if (!entrants.has(interaction.user.id)) return interaction.reply({ content: "You are not entered in this giveaway.", ephemeral: true });
+    entrants.delete(interaction.user.id);
+    delete gw.entryWeights[interaction.user.id];
+    gw.entrants = entrants;
+    await upsertGiveaway(gw);
+    await interaction.message.edit({ embeds: [buildGiveawayEmbed(gw, interaction.guild)], components: [buildGiveawayRow(messageId, gw)] });
     return interaction.reply({ content: "You have left the giveaway.", ephemeral: true });
   }
+}
+
+function weightedWinners(gw, ids, count) {
+  const pool = ids.map(id => ({ id, weight: Math.max(1, Number(gw.entryWeights?.[id] || 1)) }));
+  const winners = [];
+  while (pool.length && winners.length < count) {
+    const total = pool.reduce((sum, item) => sum + item.weight, 0);
+    let cursor = Math.random() * total;
+    let picked = 0;
+    for (let i = 0; i < pool.length; i++) {
+      cursor -= pool[i].weight;
+      if (cursor <= 0) { picked = i; break; }
+    }
+    winners.push(pool[picked].id);
+    pool.splice(picked, 1);
+  }
+  return winners;
+}
+
+async function getActiveEntrants(client, gw) {
+  const guild = await client.guilds.fetch(gw.guildId);
+  const ids = [...entrantSet(gw)].filter(id => id !== client.user.id);
+  const fetched = await Promise.all(ids.map(id => guild.members.fetch(id).catch(() => null)));
+  const members = new Map(fetched.filter(Boolean).map(member => [member.id, member]));
+  const valid = ids.filter(id => {
+    const member = members?.get(id);
+    return member && !(gw.excludedRoleId && member.roles.cache.has(gw.excludedRoleId));
+  });
+  return { guild, valid };
 }
 
 export async function endGiveaway(client, messageId) {
   const gw = giveaways.get(messageId);
   if (!gw || gw.ended) return;
-
-  gw.ended = true;
-  giveaways.set(messageId, gw);
-
+  if (gw.timer) clearTimeout(gw.timer);
   try {
-    const guild   = await client.guilds.fetch(gw.guildId);
+    const { guild, valid } = await getActiveEntrants(client, gw);
     const channel = await guild.channels.fetch(gw.channelId);
-    const msg     = await channel.messages.fetch(messageId);
-
-    let eligible = [...(gw.entrants instanceof Set ? gw.entrants : new Set(gw.entrants))]
-      .filter(id => id !== client.user.id);
-
-    // Apply role bonus: expand eligible array with duplicate entries for bonus roles
-    if (gw.roleBonus && Object.keys(gw.roleBonus).length > 0) {
-      const guildMember = await guild.members.fetch();
-      const expanded = [];
-      for (const id of eligible) {
-        const member = guildMember.get(id);
-        expanded.push(id);
-        if (member) {
-          for (const [roleId, bonus] of Object.entries(gw.roleBonus)) {
-            if (member.roles.cache.has(roleId)) {
-              for (let i = 0; i < bonus; i++) expanded.push(id);
-            }
-          }
-        }
-      }
-      eligible = expanded;
-    }
-
-    const embed = buildGiveawayEmbed(gw);
-
-    if (eligible.length === 0) {
-      embed.setDescription(`${DIVIDER}\n❌ No valid entries. No winners this time.\n${DIVIDER}`);
-      await msg.edit({ embeds: [embed], components: [buildGiveawayRow(messageId, true)] });
-      await channel.send("💧 The giveaway ended but nobody entered.");
-      await upsertGiveaway({ ...gw, entrants: [...gw.entrants] });
-      return;
-    }
-
-    const shuffled    = eligible.sort(() => Math.random() - 0.5);
-    const winners     = shuffled.slice(0, Math.min(gw.winnerCount, eligible.length));
-    // Deduplicate winners for display
-    const uniqueWinners = [...new Set(winners)];
-    const winMentions = uniqueWinners.map(id => `<@${id}>`).join(", ");
-
-    embed.setDescription(
-      `${DIVIDER}\n` +
-      `Winner${uniqueWinners.length > 1 ? "s" : ""}: ${winMentions}\n\n` +
-      `Prize: **${gw.prize}**\n` +
-      `Total entries: ${eligible.length}\n` +
-      `${DIVIDER}`
-    );
-
-    await msg.edit({ embeds: [embed], components: [buildGiveawayRow(messageId, true)] });
-    await channel.send(`🎊 Congratulations ${winMentions}! You won **${gw.prize}**! Contact <@${gw.hostId}> to claim. 🌸`);
-
-    gw.winners = uniqueWinners;
+    const message = await channel.messages.fetch(messageId);
+    const winners = weightedWinners(gw, valid, Math.min(gw.winnerCount, valid.length));
+    gw.ended = true;
+    gw.winners = winners;
+    gw.entrants = entrantSet(gw);
+    const winnerText = winners.length ? winners.map(id => `<@${id}>`).join(", ") : "No valid entries";
+    const embed = buildGiveawayEmbed(gw, guild).setDescription(`${DIVIDER}\n${winners.length ? `Winner${winners.length > 1 ? "s" : ""}: ${winnerText}\n\nPrize: **${gw.prize}**` : "❌ No valid entries. No winners this time."}\n\nTotal tickets: **${totalTickets(gw)}**\n${DIVIDER}`);
+    await message.edit({ embeds: [embed], components: [buildGiveawayRow(messageId, gw, true)] });
+    await channel.send(winners.length ? `🎊 Congratulations ${winnerText}! You won **${gw.prize}**! Contact <@${gw.hostId}> to claim.` : "💧 The giveaway ended but nobody met the entry requirements.");
     giveaways.set(messageId, gw);
-    await upsertGiveaway({ ...gw, entrants: [...gw.entrants] });
+    await upsertGiveaway(gw);
   } catch (err) {
     console.error("Giveaway end error:", err.message);
   }
@@ -285,9 +348,8 @@ export async function restoreGiveawayTimers(client) {
   for (const [messageId, gw] of giveaways) {
     if (gw.ended) continue;
     const remaining = gw.endTime - Date.now();
-    if (remaining <= 0) {
-      endGiveaway(client, messageId);
-    } else {
+    if (remaining <= 0) void endGiveaway(client, messageId);
+    else {
       gw.timer = setTimeout(() => endGiveaway(client, messageId), remaining);
       giveaways.set(messageId, gw);
     }
@@ -297,40 +359,15 @@ export async function restoreGiveawayTimers(client) {
 async function rerollGiveaway(client, messageId, fallbackChannel) {
   const gw = giveaways.get(messageId);
   if (!gw) return;
-
-  let eligible = [...(gw.entrants instanceof Set ? gw.entrants : new Set(gw.entrants))]
-    .filter(id => id !== client.user.id);
-
-  if (gw.roleBonus && Object.keys(gw.roleBonus).length > 0) {
-    const guild = await client.guilds.fetch(gw.guildId);
-    const guildMember = await guild.members.fetch();
-    const expanded = [];
-    for (const id of eligible) {
-      const member = guildMember.get(id);
-      expanded.push(id);
-      if (member) {
-        for (const [roleId, bonus] of Object.entries(gw.roleBonus)) {
-          if (member.roles.cache.has(roleId)) {
-            for (let i = 0; i < bonus; i++) expanded.push(id);
-          }
-        }
-      }
-    }
-    eligible = expanded;
-  }
-
   try {
-    const guild   = await client.guilds.fetch(gw.guildId);
-    const channel = await guild.channels.fetch(gw.channelId);
-
-    if (eligible.length === 0) {
-      await (fallbackChannel || channel).send("💧 No valid entries to reroll.");
-      return;
-    }
-    const winners     = eligible.sort(() => Math.random() - 0.5).slice(0, Math.min(gw.winnerCount, eligible.length));
-    const uniqueWinners = [...new Set(winners)];
-    const winMentions = uniqueWinners.map(id => `<@${id}>`).join(", ");
-    await (fallbackChannel || channel).send(`🎊 Reroll! New winner${uniqueWinners.length > 1 ? "s" : ""}: ${winMentions}! 🌸`);
+    const { valid } = await getActiveEntrants(client, gw);
+    const winners = weightedWinners(gw, valid.filter(id => !gw.winners?.includes(id)), Math.min(gw.winnerCount, valid.length));
+    const target = fallbackChannel || await (await client.guilds.fetch(gw.guildId)).channels.fetch(gw.channelId);
+    if (!winners.length) return target.send("💧 No valid entries are available for a reroll.");
+    const text = winners.map(id => `<@${id}>`).join(", ");
+    await target.send(`🎊 Reroll winner${winners.length > 1 ? "s" : ""}: ${text}! You won **${gw.prize}**.`);
+    gw.winners = [...(gw.winners || []), ...winners];
+    await upsertGiveaway(gw);
   } catch (err) {
     console.error("Giveaway reroll error:", err.message);
   }

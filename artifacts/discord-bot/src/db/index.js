@@ -92,11 +92,24 @@ export async function getAllTickets() {
 // ─── Giveaways ─────────────────────────────────────────────────────────────────────────────────
 export async function upsertGiveaway(g) {
   await pool.query(
-    `INSERT INTO giveaways (message_id, prize, winner_count, end_time, host_id, guild_id, channel_id, ended, winners, entrants)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-     ON CONFLICT (message_id) DO UPDATE SET ended=$8, winners=$9, entrants=$10`,
+    `INSERT INTO giveaways
+       (message_id, prize, winner_count, end_time, host_id, guild_id, channel_id,
+        ended, winners, entrants, config, entry_weights)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+     ON CONFLICT (message_id) DO UPDATE SET
+       ended=$8, winners=$9, entrants=$10, config=$11, entry_weights=$12`,
     [g.messageId, g.prize, g.winnerCount, g.endTime, g.hostId, g.guildId,
-     g.channelId, g.ended, JSON.stringify(g.winners||[]), JSON.stringify([...(g.entrants||[])])]
+     g.channelId, g.ended, JSON.stringify(g.winners||[]),
+     JSON.stringify([...(g.entrants||[])]), JSON.stringify({
+       roleBonus: g.roleBonus || {},
+       minDays: g.minDays || 0,
+       requiredRoleId: g.requiredRoleId || null,
+       bypassRoleId: g.bypassRoleId || null,
+       excludedRoleId: g.excludedRoleId || null,
+       minLevel: g.minLevel || 0,
+       dailyMessages: g.dailyMessages || 0,
+       monthlyMessages: g.monthlyMessages || 0,
+     }), JSON.stringify(g.entryWeights || {})]
   );
 }
 export async function getAllGiveaways() {
@@ -105,12 +118,30 @@ export async function getAllGiveaways() {
 }
 
 // ─── User Activity ───────────────────────────────────────────────────────────────────
-export async function upsertUserActivity(guildId, userId, timestamp) {
+export async function upsertUserActivity(guildId, userId, timestamp, dailyMessages = 1, monthlyMessages = 1, dayKey = null, monthKey = null) {
   await pool.query(
-    `INSERT INTO user_activity (guild_id, user_id, last_active, message_count)
-     VALUES ($1, $2, $3, 1)
-     ON CONFLICT (guild_id, user_id) DO UPDATE SET last_active = $3, message_count = user_activity.message_count + 1`,
-    [guildId, userId, timestamp]
+    `INSERT INTO user_activity
+       (guild_id, user_id, last_active, message_count, daily_message_count,
+        monthly_message_count, activity_day, activity_month)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     ON CONFLICT (guild_id, user_id) DO UPDATE SET
+       last_active = EXCLUDED.last_active,
+       message_count = user_activity.message_count + EXCLUDED.message_count,
+       daily_message_count = CASE
+         WHEN user_activity.activity_day = EXCLUDED.activity_day
+           THEN user_activity.daily_message_count + EXCLUDED.daily_message_count
+         ELSE EXCLUDED.daily_message_count
+       END,
+       monthly_message_count = CASE
+         WHEN user_activity.activity_month = EXCLUDED.activity_month
+           THEN user_activity.monthly_message_count + EXCLUDED.monthly_message_count
+         ELSE EXCLUDED.monthly_message_count
+       END,
+       activity_day = EXCLUDED.activity_day,
+       activity_month = EXCLUDED.activity_month`,
+    [guildId, userId, timestamp, dailyMessages, dailyMessages, monthlyMessages,
+      dayKey || new Date(timestamp).toISOString().slice(0, 10),
+      monthKey || new Date(timestamp).toISOString().slice(0, 7)]
   );
 }
 export async function getUserActivity(guildId, userId, since) {
@@ -119,6 +150,22 @@ export async function getUserActivity(guildId, userId, since) {
     [guildId, userId, since]
   );
   return r.rows[0] || null;
+}
+export async function getUserActivityCounts(guildId, userId) {
+  const r = await pool.query(
+    "SELECT * FROM user_activity WHERE guild_id=$1 AND user_id=$2",
+    [guildId, userId]
+  );
+  const row = r.rows[0];
+  if (!row) return null;
+  const now = new Date();
+  const dayKey = now.toISOString().slice(0, 10);
+  const monthKey = now.toISOString().slice(0, 7);
+  return {
+    ...row,
+    daily_message_count: row.activity_day === dayKey ? Number(row.daily_message_count || 0) : 0,
+    monthly_message_count: row.activity_month === monthKey ? Number(row.monthly_message_count || 0) : 0,
+  };
 }
 
 // ─── Music Plays ───────────────────────────────────────────────────────────────────
@@ -288,8 +335,16 @@ export async function ensureTables() {
       user_id VARCHAR(50) NOT NULL,
       last_active BIGINT NOT NULL DEFAULT 0,
       message_count INT NOT NULL DEFAULT 0,
+      daily_message_count INT NOT NULL DEFAULT 0,
+      monthly_message_count INT NOT NULL DEFAULT 0,
+      activity_day VARCHAR(10),
+      activity_month VARCHAR(7),
       PRIMARY KEY (guild_id, user_id)
     );
+    ALTER TABLE user_activity ADD COLUMN IF NOT EXISTS daily_message_count INT NOT NULL DEFAULT 0;
+    ALTER TABLE user_activity ADD COLUMN IF NOT EXISTS monthly_message_count INT NOT NULL DEFAULT 0;
+    ALTER TABLE user_activity ADD COLUMN IF NOT EXISTS activity_day VARCHAR(10);
+    ALTER TABLE user_activity ADD COLUMN IF NOT EXISTS activity_month VARCHAR(7);
     CREATE TABLE IF NOT EXISTS music_plays (
       id SERIAL PRIMARY KEY,
       user_id VARCHAR(50) NOT NULL,
@@ -369,7 +424,14 @@ export async function ensureTables() {
     )
   `).catch(() => {});
 
-  console.log("\u2705 Auto-created user_activity, music_plays, economy_users tables; migration complete");
+  // Giveaway configuration was added after the original table. Keep this
+  // migration additive so existing giveaways remain usable.
+  await pool.query(`
+    ALTER TABLE giveaways ADD COLUMN IF NOT EXISTS config TEXT DEFAULT '{}';
+    ALTER TABLE giveaways ADD COLUMN IF NOT EXISTS entry_weights TEXT DEFAULT '{}';
+  `).catch(() => {});
+
+  console.log("\u2705 Auto-created activity, music, economy and giveaway tables; migration complete");
 }
 
 export async function getMusicConnection(userId) {
@@ -577,6 +639,8 @@ export async function hydrateStore(store) {
       winnerCount: row.winner_count, endTime: Number(row.end_time),
       hostId: row.host_id, guildId: row.guild_id, channelId: row.channel_id,
       ended: row.ended, winners: JSON.parse(row.winners || "[]"), entrants: new Set(entrantList),
+      ...(JSON.parse(row.config || "{}")),
+      entryWeights: JSON.parse(row.entry_weights || "{}"),
     });
   }
   for (const row of countingRows) {

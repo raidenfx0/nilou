@@ -6,12 +6,33 @@ import { createLevelCard } from "../utils/levelCard.js";
 
 const chatCooldowns   = new Map(); // `${guildId}:${userId}` → timestamp
 const channelMsgCount = new Map(); // `${guildId}:${channelId}` → count
+const pendingActivity = new Map(); // `${guildId}:${userId}` → compact batched counters
 
 const XP_PER_MSG    = 5;
 const COINS_PER_MSG = 2;
 const XP_COOLDOWN   = 60_000;
 const DROP_EVERY    = 100;          // messages between drops
 const DROP_EXPIRE   = 120_000;     // 2 min to collect
+const ACTIVITY_FLUSH_MS = 30_000;
+
+// Giveaway activity only needs aggregate counters. Batch writes so busy
+// channels do not create one PostgreSQL query per message.
+async function flushActivity() {
+  const batch = [...pendingActivity.values()];
+  pendingActivity.clear();
+  await Promise.all(batch.map((entry) => upsertUserActivity(
+    entry.guildId,
+    entry.userId,
+    entry.timestamp,
+    entry.count,
+    entry.count,
+    entry.dayKey,
+    entry.monthKey,
+  ).catch(() => {})));
+}
+
+const activityFlushTimer = setInterval(() => { void flushActivity(); }, ACTIVITY_FLUSH_MS);
+activityFlushTimer.unref?.();
 
 // EXP thresholds (same as economy.js)
 const LEVELS = [0, 100, 300, 600, 1100, 1800, 2700, 3800, 5200, 7000, 9200,
@@ -60,7 +81,23 @@ export async function execute(message) {
   const userId = message.author.id;
 
   // ─── User activity tracking (giveaway eligibility) ─────────────────────────────
-  upsertUserActivity(guildId, userId, Date.now()).catch(() => {});
+  // Store only one aggregate row per guild/user; flush at most twice a minute.
+  const now = Date.now();
+  const date = new Date(now);
+  const activityKey = `${guildId}:${userId}`;
+  const current = pendingActivity.get(activityKey);
+  const dayKey = date.toISOString().slice(0, 10);
+  const monthKey = date.toISOString().slice(0, 7);
+  if (current && current.dayKey === dayKey && current.monthKey === monthKey) {
+    current.count += 1;
+    current.timestamp = now;
+  } else {
+    if (current) void upsertUserActivity(
+      current.guildId, current.userId, current.timestamp, current.count, current.count,
+      current.dayKey, current.monthKey,
+    ).catch(() => {});
+    pendingActivity.set(activityKey, { guildId, userId, timestamp: now, count: 1, dayKey, monthKey });
+  }
 
   // ─── AFK clear ──────────────────────────────────────────────────────────────
   const afkKey = `${guildId}:${userId}`;

@@ -19,6 +19,7 @@ import {
   Routes,
   Events,
   EmbedBuilder,
+  ActivityType,
 } from "discord.js";
 import { createServer } from "http";
 import { Connectors } from "shoukaku";
@@ -302,6 +303,14 @@ const rest = new REST().setToken(TOKEN);
 
 client.once(Events.ClientReady, async (readyClient) => {
   console.log(`✅ Logged in as ${readyClient.user.tag}`);
+  readyClient.user.setPresence({
+    status: "online",
+    activities: [{
+      name: "Dancing in the theater",
+      type: ActivityType.Streaming,
+      url: "https://youtu.be/dQw4w9WgXcQ?si=h6aLaUHqzqVXRQ5r",
+    }],
+  });
   // Restore giveaway timers after restart (so active giveaways auto-end on time)
   restoreGiveawayTimers(readyClient);
   botStats.startTime = Date.now();
@@ -405,7 +414,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return;
     }
 
-    if (id.startsWith("gw_enter:") || id.startsWith("gw_leave:")) {
+    if (id.startsWith("gw_enter:") || id.startsWith("gw_leave:") || id.startsWith("gw_participants:")) {
       await handleGiveawayButton(interaction);
       return;
     }
