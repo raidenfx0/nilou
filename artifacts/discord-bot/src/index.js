@@ -283,6 +283,31 @@ client.manager.on("playerEmpty", (player) => {
   updateVoiceStatus(player, client, true);
 });
 
+// Keep source/playback failures visible. A playerStart event only means that
+// Kazagumo accepted the track; it does not guarantee that an audio stream was
+// successfully opened in the voice connection.
+client.manager.on("playerResolveError", (player, track, message) => {
+  console.error(
+    `❌ Lavalink could not resolve "${track?.title || "unknown track"}" in guild ${player?.guildId || "unknown"}:`,
+    message || "unknown resolve error",
+  );
+});
+
+client.manager.on("playerException", (player, data) => {
+  const detail = data?.exception?.message || data?.exception?.cause || data?.message || data || "unknown exception";
+  console.error(
+    `❌ Lavalink playback exception in guild ${player?.guildId || "unknown"}:`,
+    detail,
+  );
+});
+
+client.manager.on("playerStuck", (player, data) => {
+  console.error(
+    `❌ Lavalink playback stuck in guild ${player?.guildId || "unknown"}:`,
+    data?.thresholdMs ? `stuck after ${data.thresholdMs}ms` : data || "unknown stuck event",
+  );
+});
+
 client.manager.on("error", (name, error) => {
   console.error(`❌ Kazagumo Error on node ${name}:`, error);
 });

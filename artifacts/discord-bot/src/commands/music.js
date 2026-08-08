@@ -328,6 +328,7 @@ export async function execute(interaction) {
             voiceId: voiceChannel.id,
             textId: channel.id,
             deaf: true,
+            volume: 100,
           });
           return interaction.editReply("🌸 ✦ I have arrived on stage!");
         }
@@ -350,6 +351,7 @@ export async function execute(interaction) {
             voiceId: voiceChannel.id,
             textId: channel.id,
             deaf: true,
+            volume: 100,
           });
         }
 
