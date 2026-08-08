@@ -42,6 +42,8 @@ import {
   loggingConfig,
   countingChannels,
   pendingDrops,
+  dropChannels,
+  activityCounters,
   starboards,
   starboardEntries,
 } from "./data/store.js";
@@ -236,8 +238,10 @@ client.manager.on("playerEnd", async (player, track) => {
   const duration = track?.duration || track?.length || 0;
   if (start && duration) {
     const played = Date.now() - start;
-    const threshold = Math.min(30000, Math.floor(duration * 0.5));
-    if (played >= threshold && played >= 5000) {
+    // Last.fm requires tracks longer than 30 seconds and either half the
+    // track or four minutes played, whichever comes first.
+    const threshold = Math.min(240000, Math.floor(duration * 0.5));
+    if (duration > 30000 && played >= threshold) {
       const requesterId = track?.requester?.id;
       const guildId = player?.guildId;
       if (requesterId && guildId) {
@@ -290,18 +294,19 @@ loadEvents(client);
 const store = {
   afkUsers, stickyMessages, tickets, ticketConfig, giveaways,
   triggers, countdowns, pinnedCountdowns, adminRoles, welcomeChannels,
-  loggingConfig, countingChannels, starboards, starboardEntries,
+  loggingConfig, countingChannels, starboards, starboardEntries, dropChannels,
 };
 
-// Hydrate all in-memory maps from PostgreSQL before login
-hydrateStore(store).catch(err => console.error("❌ DB hydration failed:", err));
-
-// Auto-create new tables on startup
-ensureTables().catch(err => console.error("❌ Table creation failed:", err));
+// Run migrations before hydration so newly-added columns exist when old
+// persisted giveaways and activity rows are loaded.
+const startupReady = ensureTables()
+  .then(() => hydrateStore(store))
+  .catch(err => console.error("❌ Database startup failed:", err));
 
 const rest = new REST().setToken(TOKEN);
 
 client.once(Events.ClientReady, async (readyClient) => {
+  await startupReady;
   console.log(`✅ Logged in as ${readyClient.user.tag}`);
   readyClient.user.setPresence({
     status: "online",

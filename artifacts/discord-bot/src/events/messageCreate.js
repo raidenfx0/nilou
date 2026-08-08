@@ -1,12 +1,11 @@
 import { Events, EmbedBuilder, AttachmentBuilder } from "discord.js";
-import { stickyMessages, afkUsers, triggers, countingChannels, pendingDrops, dropChannels } from "../data/store.js";
+import { stickyMessages, afkUsers, triggers, countingChannels, pendingDrops, dropChannels, activityCounters } from "../data/store.js";
 import { NILOU_RED, FOOTER_STICKY, DIVIDER } from "../theme.js";
 import { getEconomy, updateEconomy, upsertCountingConfig, updateStickyLastMessage, upsertUserActivity } from "../db/index.js";
 import { createLevelCard } from "../utils/levelCard.js";
 
 const chatCooldowns   = new Map(); // `${guildId}:${userId}` → timestamp
 const channelMsgCount = new Map(); // `${guildId}:${channelId}` → count
-const pendingActivity = new Map(); // `${guildId}:${userId}` → compact batched counters
 
 const XP_PER_MSG    = 5;
 const COINS_PER_MSG = 2;
@@ -18,8 +17,8 @@ const ACTIVITY_FLUSH_MS = 30_000;
 // Giveaway activity only needs aggregate counters. Batch writes so busy
 // channels do not create one PostgreSQL query per message.
 async function flushActivity() {
-  const batch = [...pendingActivity.values()];
-  pendingActivity.clear();
+  const batch = [...activityCounters.values()];
+  activityCounters.clear();
   await Promise.all(batch.map((entry) => upsertUserActivity(
     entry.guildId,
     entry.userId,
@@ -85,7 +84,7 @@ export async function execute(message) {
   const now = Date.now();
   const date = new Date(now);
   const activityKey = `${guildId}:${userId}`;
-  const current = pendingActivity.get(activityKey);
+  const current = activityCounters.get(activityKey);
   const dayKey = date.toISOString().slice(0, 10);
   const monthKey = date.toISOString().slice(0, 7);
   if (current && current.dayKey === dayKey && current.monthKey === monthKey) {
@@ -96,7 +95,7 @@ export async function execute(message) {
       current.guildId, current.userId, current.timestamp, current.count, current.count,
       current.dayKey, current.monthKey,
     ).catch(() => {});
-    pendingActivity.set(activityKey, { guildId, userId, timestamp: now, count: 1, dayKey, monthKey });
+    activityCounters.set(activityKey, { guildId, userId, timestamp: now, count: 1, dayKey, monthKey });
   }
 
   // ─── AFK clear ──────────────────────────────────────────────────────────────

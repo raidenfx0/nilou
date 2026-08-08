@@ -12,6 +12,9 @@ export const triggers          = new Map();
 export const pinnedCountdowns  = new Map();
 export const loggingConfig     = new Map();
 export const countingChannels  = new Map();
+// `${guildId}:${userId}` → { guildId, userId, timestamp, count, dayKey, monthKey }
+// Kept small and flushed periodically for giveaway activity requirements.
+export const activityCounters  = new Map();
 
 // channelId → { guildId, amount, type, itemName, msgId, expiry }
 export const pendingDrops      = new Map();

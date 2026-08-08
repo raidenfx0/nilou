@@ -17,6 +17,7 @@ fi
 # ─── Start Lavalink in the background ───────────────────────────────────────
 if [ -f "lavalink/Lavalink.jar" ]; then
   echo "🎺 Starting local Lavalink server..."
+  LAVALINK_PASSWORD="${LAVALINK_PASSWORD:-niloubot-lavalink-2026}"
   cd lavalink
   java -jar Lavalink.jar &> ../lavalink.log &
   LAVALINK_PID=$!
@@ -25,7 +26,7 @@ if [ -f "lavalink/Lavalink.jar" ]; then
 
   # Wait for it to be ready (max 30s)
   for i in {1..30}; do
-    if curl -s http://localhost:2333/version > /dev/null 2>&1; then
+    if curl -sf -H "Authorization: ${LAVALINK_PASSWORD}" http://localhost:2333/version > /dev/null 2>&1; then
       echo "✅ Lavalink is ready on port 2333"
       break
     fi

@@ -4,7 +4,7 @@ import {
 } from "discord.js";
 import { NILOU_RED, FOOTER_MAIN, DIVIDER } from "../theme.js";
 import { isAdmin, denyAdmin } from "../utils/adminCheck.js";
-import { giveaways } from "../data/store.js";
+import { giveaways, activityCounters } from "../data/store.js";
 import {
   upsertGiveaway,
   getUserActivity,
@@ -243,11 +243,16 @@ async function checkEligibility(interaction, gw) {
   }
   if (!bypasses && (gw.dailyMessages > 0 || gw.monthlyMessages > 0)) {
     const counts = await getUserActivityCounts(gw.guildId, interaction.user.id);
-    if (gw.dailyMessages > 0 && Number(counts?.daily_message_count || 0) < gw.dailyMessages) {
-      return { ok: false, reason: `You need ${gw.dailyMessages} messages today; you have ${Number(counts?.daily_message_count || 0)}.` };
+    const pending = activityCounters.get(`${gw.guildId}:${interaction.user.id}`);
+    const today = new Date().toISOString().slice(0, 10);
+    const pendingMessages = pending?.dayKey === today ? Number(pending.count || 0) : 0;
+    const dailyMessages = Number(counts?.daily_message_count || 0) + pendingMessages;
+    const monthlyMessages = Number(counts?.monthly_message_count || 0) + pendingMessages;
+    if (gw.dailyMessages > 0 && dailyMessages < gw.dailyMessages) {
+      return { ok: false, reason: `You need ${gw.dailyMessages} messages today; you have ${dailyMessages}.` };
     }
-    if (gw.monthlyMessages > 0 && Number(counts?.monthly_message_count || 0) < gw.monthlyMessages) {
-      return { ok: false, reason: `You need ${gw.monthlyMessages} messages this month; you have ${Number(counts?.monthly_message_count || 0)}.` };
+    if (gw.monthlyMessages > 0 && monthlyMessages < gw.monthlyMessages) {
+      return { ok: false, reason: `You need ${gw.monthlyMessages} messages this month; you have ${monthlyMessages}.` };
     }
   }
   if (!bypasses && gw.minDays > 0) {

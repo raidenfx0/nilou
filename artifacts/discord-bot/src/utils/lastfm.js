@@ -11,17 +11,24 @@ export function isConfigured() {
   return API_KEY && API_SECRET;
 }
 
-async function callApi(params) {
-  const url = new URL(API_URL);
-  for (const [k, v] of Object.entries(params)) {
-    if (v != null) url.searchParams.set(k, String(v));
+async function callApi(params, { write = false } = {}) {
+  const body = new URLSearchParams();
+  for (const [k, v] of Object.entries({ ...params, api_key: API_KEY, format: "json" })) {
+    if (v != null) body.set(k, String(v));
   }
-  url.searchParams.set("api_key", API_KEY);
-  url.searchParams.set("format", "json");
 
-  const res = await fetch(url.toString());
-  if (!res.ok) throw new Error(`Last.fm HTTP ${res.status}`);
-  return res.json();
+  const url = new URL(API_URL);
+  if (!write) {
+    for (const [key, value] of body) url.searchParams.set(key, value);
+  }
+  const res = await fetch(write ? API_URL : url, write
+    ? { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded; charset=UTF-8" }, body }
+    : { method: "GET", headers: { accept: "application/json" } });
+  const text = await res.text();
+  let data;
+  try { data = JSON.parse(text); } catch { data = { raw: text }; }
+  if (!res.ok) throw new Error(`Last.fm HTTP ${res.status}: ${data?.message || text.slice(0, 200)}`);
+  return data;
 }
 
 import crypto from "crypto";
@@ -43,9 +50,9 @@ export function getAuthUrl(callbackUrl) {
 
 /** Exchange a token for a session key */
 export async function getSession(token) {
-  const params = { method: "auth.getSession", api_key: API_KEY, token };
+   const params = { method: "auth.getSession", api_key: API_KEY, token };
   params.api_sig = makeSig(params, API_SECRET);
-  const data = await callApi(params);
+   const data = await callApi(params);
   if (data.error) throw new Error(`Last.fm error ${data.error}: ${data.message}`);
   return data.session;
 }
@@ -55,6 +62,7 @@ export async function updateNowPlaying(sessionKey, trackTitle, artist, album = "
   if (!isConfigured() || !sessionKey) return false;
   const params = {
     method: "track.updateNowPlaying",
+    api_key: API_KEY,
     track: trackTitle,
     artist,
     ...(album && { album }),
@@ -62,7 +70,7 @@ export async function updateNowPlaying(sessionKey, trackTitle, artist, album = "
     sk: sessionKey,
   };
   params.api_sig = makeSig(params, API_SECRET);
-  const data = await callApi(params);
+  const data = await callApi(params, { write: true });
   if (data.error) {
     console.error("Last.fm nowPlaying error:", data.message);
     return false;
@@ -76,6 +84,7 @@ export async function scrobble(sessionKey, trackTitle, artist, album = "", durat
   const ts = timestamp || Math.floor(Date.now() / 1000);
   const params = {
     method: "track.scrobble",
+    api_key: API_KEY,
     track: trackTitle,
     artist,
     ...(album && { album }),
@@ -84,7 +93,7 @@ export async function scrobble(sessionKey, trackTitle, artist, album = "", durat
     sk: sessionKey,
   };
   params.api_sig = makeSig(params, API_SECRET);
-  const data = await callApi(params);
+  const data = await callApi(params, { write: true });
   if (data.error) {
     console.error("Last.fm scrobble error:", data.message);
     return false;
