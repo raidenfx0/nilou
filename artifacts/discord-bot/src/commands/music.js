@@ -6,67 +6,23 @@ import {
   ButtonStyle,
   ComponentType,
 } from "discord.js";
-import { NILOU_RED, DIVIDER } from "../theme.js";
+import { NILOU_RED } from "../theme.js";
 import { getEmojiString } from "../utils/emojiCache.js";
 import { recordMusicPlay as dbRecordMusicPlay, getUserPlayStats, getGuildPlayStats } from "../db/index.js";
 
 /**
- * Utility to format time in HH:MM:SS or MM:SS
- */
-function formatTime(ms) {
-  if (!ms || isNaN(ms) || ms <= 0) return "00:00";
-  const totalSeconds = Math.floor(ms / 1000);
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-
-  const m = minutes.toString().padStart(2, "0");
-  const s = seconds.toString().padStart(2, "0");
-
-  if (hours > 0) {
-    const h = hours.toString().padStart(2, "0");
-    return `${h}:${m}:${s}`;
-  }
-  return `${m}:${s}`;
-}
-
-/**
- * Generates a clean progress bar for the performance
- */
-function createProgressBar(current, total, size = 18) {
-  if (!current || !total) return "─── 🌸 ───";
-  const progress = Math.min(size, Math.round((size * current) / total));
-  const emptyProgress = size - progress;
-  const progressText = "▬".repeat(progress);
-  const emptyProgressText = "─".repeat(emptyProgress);
-  return `**${progressText}**🌸**${emptyProgressText}**`;
-}
-
-/**
- * Helper to create a consistent Now Performing embed
+ * Compact one-line Now Performing embed used by music interactions.
  */
 export function createNowPlayingEmbed(player) {
   const track = player.queue.current;
   if (!track) return null;
 
-  const position = player.position || 0;
-  const duration = track.duration || track.length || 0;
-
   return new EmbedBuilder()
     .setColor(NILOU_RED)
-    .setTitle("🎭 ✦ Now Performing")
-    .setThumbnail(
-      track.thumbnail || track.displayThumbnail?.("maxresdefault") || null,
-    )
+    .setTitle("🌸 Now Performing")
     .setDescription(
-      `**[${track.title}](${track.uri})**\n` +
-        `*By ${track.author}*\n\n` +
-        `${createProgressBar(position, duration)}\n` +
-        `\`${formatTime(position)} / ${formatTime(duration)}\``,
-    )
-    .setFooter({
-      text: `Requested by ${track.requester?.username || "Audience"} • 24/7: ${player.data.get("247") ? "ON" : "OFF"}`,
-    });
+      `**[${track.title}](${track.uri})** — ${track.author || "Unknown"} · requested by ${track.requester?.username || "Audience"}`,
+    );
 }
 
 /**

@@ -164,8 +164,6 @@ client.manager.on("playerStart", async (player, track) => {
   // Build enriched embed
   let embedTitle = track.title;
   let embedArtist = track.author || "Unknown";
-  let embedThumbnail = track.thumbnail || null;
-  let embedAlbum = "";
 
   // Try Spotify enrichment for linked users
   if (requesterId) {
@@ -176,8 +174,6 @@ client.manager.on("playerStart", async (player, track) => {
         const { searchTrack } = await import("./utils/spotify.js");
         const spTrack = await searchTrack(`${track.title} ${track.author || ""}`, conn.spotify_access_token);
         if (spTrack) {
-          embedAlbum = spTrack.album?.name || "";
-          embedThumbnail = spTrack.album?.images?.[0]?.url || embedThumbnail;
           embedArtist = spTrack.artists?.map(a => a.name).join(", ") || embedArtist;
           embedTitle = spTrack.name || embedTitle;
         }
@@ -189,15 +185,14 @@ client.manager.on("playerStart", async (player, track) => {
 
   if (channel) {
     const { EmbedBuilder } = await import("discord.js");
-    const { NILOU_RED, DIVIDER } = await import("./theme.js");
+    const { NILOU_RED } = await import("./theme.js");
     const np = new EmbedBuilder()
       .setColor(NILOU_RED)
       .setTitle("🌸 ✦ Now Performing")
       .setDescription(
-        `${DIVIDER}\n**${embedTitle}**\nby **${embedArtist}**${embedAlbum ? `\n*from ${embedAlbum}*` : ""}\n${DIVIDER}`
+        `**${embedTitle}** — ${embedArtist} · requested by ${requester?.username || "Audience"}`
       )
-      .setFooter({ text: `Requested by ${requester?.username || "Audience"}` });
-    if (embedThumbnail) np.setThumbnail(embedThumbnail);
+      .setURL(track.uri || null);
     channel.send({ embeds: [np] }).catch(() => {});
   }
 
