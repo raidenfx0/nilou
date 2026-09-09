@@ -22,6 +22,9 @@ export const pendingDrops      = new Map();
 // guildId → { channelId }  (drops redirect target)
 export const dropChannels      = new Map();
 
+// guildId → { weekKey, slots: [{ at, sent }] } (persistent weekly drop plan)
+export const dropSchedules     = new Map();
+
 // guildId:emoji → { id, name, channelId, emoji, threshold, selfStar, enabled, blacklist[] }
 export const starboards = new Map();
 

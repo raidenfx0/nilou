@@ -27,6 +27,7 @@ import { Kazagumo, Plugins } from "kazagumo";
 
 import { loadCommands } from "./handlers/commands.js";
 import { loadEvents } from "./handlers/events.js";
+import { scheduleTheaterDropsForGuild, startTheaterDropScheduler } from "./events/messageCreate.js";
 import {
   tickets,
   ticketConfig,
@@ -43,6 +44,7 @@ import {
   countingChannels,
   pendingDrops,
   dropChannels,
+  dropSchedules,
   activityCounters,
   starboards,
   starboardEntries,
@@ -315,6 +317,7 @@ const store = {
   afkUsers, stickyMessages, tickets, ticketConfig, giveaways,
   triggers, countdowns, pinnedCountdowns, adminRoles, welcomeChannels,
   loggingConfig, countingChannels, starboards, starboardEntries, dropChannels,
+  dropSchedules,
 };
 
 // Run migrations before hydration so newly-added columns exist when old
@@ -338,6 +341,7 @@ client.once(Events.ClientReady, async (readyClient) => {
   });
   // Restore giveaway timers after restart (so active giveaways auto-end on time)
   restoreGiveawayTimers(readyClient);
+  await startTheaterDropScheduler(readyClient);
   botStats.startTime = Date.now();
 
   // Cache custom emojis from the main server
@@ -369,6 +373,7 @@ client.once(Events.ClientReady, async (readyClient) => {
 
 client.on(Events.GuildCreate, async (guild) => {
   console.log(`🌸 Joined new server: ${guild.name}. Using global commands.`);
+  await scheduleTheaterDropsForGuild(guild);
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {

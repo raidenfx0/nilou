@@ -1,18 +1,21 @@
 import { Events, EmbedBuilder, AttachmentBuilder } from "discord.js";
-import { stickyMessages, afkUsers, triggers, countingChannels, pendingDrops, dropChannels, activityCounters } from "../data/store.js";
+import { stickyMessages, afkUsers, triggers, countingChannels, pendingDrops, dropChannels, dropSchedules, activityCounters } from "../data/store.js";
 import { NILOU_RED, FOOTER_STICKY, DIVIDER } from "../theme.js";
-import { getEconomy, updateEconomy, upsertCountingConfig, updateStickyLastMessage, upsertUserActivity } from "../db/index.js";
+import { getEconomy, updateEconomy, upsertCountingConfig, updateStickyLastMessage, upsertUserActivity, upsertGuildSettings } from "../db/index.js";
 import { createLevelCard } from "../utils/levelCard.js";
 
 const chatCooldowns   = new Map(); // `${guildId}:${userId}` → timestamp
-const channelMsgCount = new Map(); // `${guildId}:${channelId}` → count
 
 const XP_PER_MSG    = 5;
 const COINS_PER_MSG = 2;
 const XP_COOLDOWN   = 60_000;
-const DROP_EVERY    = 100;          // messages between drops
 const DROP_EXPIRE   = 120_000;     // 2 min to collect
 const ACTIVITY_FLUSH_MS = 30_000;
+const DROP_SLOTS_PER_WEEK = 3;
+const DROP_MIN_LEAD_MS = 5 * 60_000;
+const DROP_MIN_WINDOW_MS = 30 * 60_000;
+const WEEK_MS = 7 * 24 * 60 * 60_000;
+const dropTimers = new Map();
 
 // Giveaway activity only needs aggregate counters. Batch writes so busy
 // channels do not create one PostgreSQL query per message.
@@ -69,6 +72,186 @@ const DROP_MESSAGES = [
 ];
 
 function rand(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
+
+function getUtcWeekStart(timestamp = Date.now()) {
+  const date = new Date(timestamp);
+  const daysSinceMonday = (date.getUTCDay() + 6) % 7;
+  return Date.UTC(
+    date.getUTCFullYear(),
+    date.getUTCMonth(),
+    date.getUTCDate() - daysSinceMonday,
+  );
+}
+
+function getWeekKey(weekStart) {
+  return new Date(weekStart).toISOString().slice(0, 10);
+}
+
+function createWeeklyDropSchedule(now = Date.now()) {
+  let weekStart = getUtcWeekStart(now);
+  let weekEnd = weekStart + WEEK_MS;
+  let windowStart = Math.max(now + DROP_MIN_LEAD_MS, weekStart + DROP_MIN_LEAD_MS);
+  let windowEnd = weekEnd - DROP_MIN_LEAD_MS;
+
+  // If the bot comes online during the final minutes of a week, make a full
+  // plan for the next week instead of bunching three drops together.
+  if (windowEnd - windowStart < DROP_MIN_WINDOW_MS) {
+    weekStart = weekEnd;
+    weekEnd = weekStart + WEEK_MS;
+    windowStart = weekStart + DROP_MIN_LEAD_MS;
+    windowEnd = weekEnd - DROP_MIN_LEAD_MS;
+  }
+
+  const segment = (windowEnd - windowStart) / DROP_SLOTS_PER_WEEK;
+  const slots = Array.from({ length: DROP_SLOTS_PER_WEEK }, (_, index) => {
+    const segmentStart = windowStart + segment * index;
+    const jitter = segment * (0.2 + Math.random() * 0.6);
+    return { at: Math.floor(segmentStart + jitter), sent: false };
+  });
+
+  return { weekKey: getWeekKey(weekStart), slots };
+}
+
+async function persistDropSchedule(guildId, schedule) {
+  await upsertGuildSettings(guildId, {
+    theater_drop_week: schedule.weekKey,
+    theater_drop_schedule: JSON.stringify({ slots: schedule.slots }),
+  });
+}
+
+function clearDropTimers(guildId) {
+  const timers = dropTimers.get(guildId) || [];
+  for (const timer of timers) clearTimeout(timer);
+  dropTimers.delete(guildId);
+}
+
+async function resolveDropChannel(guild) {
+  const configured = dropChannels.get(guild.id);
+  if (configured) {
+    const channel = await guild.channels.fetch(configured.channelId).catch(() => null);
+    if (channel?.isTextBased() && typeof channel.send === "function") return channel;
+  }
+
+  const candidates = [
+    guild.systemChannel,
+    ...guild.channels.cache.values(),
+  ];
+  return candidates.find((channel) =>
+    channel?.isTextBased?.() &&
+    channel.viewable !== false &&
+    typeof channel.send === "function"
+  ) || null;
+}
+
+async function sendScheduledTheaterDrop(guild) {
+  const channel = await resolveDropChannel(guild);
+  if (!channel || pendingDrops.has(channel.id)) return;
+
+  const template = DROP_MESSAGES[Math.floor(Math.random() * DROP_MESSAGES.length)];
+  const amount = rand(template.min, template.max);
+  const rewardLabel = template.type === "coins"
+    ? `💠 ${amount.toLocaleString()} Coins`
+    : template.type === "tc"
+      ? `🎟️ ${amount.toLocaleString()} Theater Credits`
+      : `🎭 ${amount.toLocaleString()} Fame`;
+  const expiry = Date.now() + DROP_EXPIRE;
+
+  const embed = new EmbedBuilder()
+    .setColor(NILOU_RED)
+    .setTitle("✨ Theater Drop")
+    .setDescription(`${template.text}\n\n**Reward:** ${rewardLabel}\n\n*First to use \`/collect\` wins · Expires in 2 minutes*`)
+    .setFooter({ text: "Nilou Bot • The stage is yours" })
+    .setTimestamp();
+
+  const dropMsg = await channel.send({ embeds: [embed] });
+  pendingDrops.set(channel.id, {
+    guildId: guild.id,
+    amount,
+    type: template.type,
+    itemName: null,
+    itemId: null,
+    msgId: dropMsg.id,
+    expiry,
+  });
+
+  setTimeout(async () => {
+    if (pendingDrops.get(channel.id)?.msgId === dropMsg.id) {
+      pendingDrops.delete(channel.id);
+      try { await dropMsg.delete(); } catch {}
+    }
+  }, DROP_EXPIRE);
+}
+
+async function fireScheduledDrop(guild, slotIndex) {
+  const schedule = dropSchedules.get(guild.id);
+  const slot = schedule?.slots?.[slotIndex];
+  if (!schedule || !slot || slot.sent) return;
+
+  // Mark before sending so a quick restart cannot announce the same reward twice.
+  slot.sent = true;
+  await persistDropSchedule(guild.id, schedule);
+
+  try {
+    await sendScheduledTheaterDrop(guild);
+  } catch (error) {
+    slot.sent = false;
+    await persistDropSchedule(guild.id, schedule).catch(() => {});
+    console.error(`❌ Theater Drop failed in ${guild.name}:`, error.message);
+  }
+}
+
+function armDropSchedule(guild, schedule) {
+  clearDropTimers(guild.id);
+  const timers = [];
+  const now = Date.now();
+  let changed = false;
+
+  for (const [index, slot] of schedule.slots.entries()) {
+    if (slot.sent) continue;
+    if (slot.at <= now) {
+      slot.sent = true;
+      changed = true;
+      continue;
+    }
+
+    timers.push(setTimeout(() => {
+      void fireScheduledDrop(guild, index);
+    }, Math.max(1_000, slot.at - now)));
+  }
+
+  if (changed) void persistDropSchedule(guild.id, schedule).catch(() => {});
+
+  const weekEnd = getUtcWeekStart(now) + WEEK_MS;
+  timers.push(setTimeout(() => {
+    void ensureWeeklyDropSchedule(guild);
+  }, Math.max(1_000, weekEnd - now + 1_000)));
+  dropTimers.set(guild.id, timers);
+}
+
+async function ensureWeeklyDropSchedule(guild) {
+  const currentWeek = getWeekKey(getUtcWeekStart());
+  let schedule = dropSchedules.get(guild.id);
+
+  if (!schedule || schedule.weekKey !== currentWeek) {
+    schedule = createWeeklyDropSchedule();
+    dropSchedules.set(guild.id, schedule);
+    await persistDropSchedule(guild.id, schedule);
+  }
+
+  armDropSchedule(guild, schedule);
+}
+
+export async function startTheaterDropScheduler(client) {
+  for (const guild of client.guilds.cache.values()) {
+    await scheduleTheaterDropsForGuild(guild);
+  }
+}
+
+export async function scheduleTheaterDropsForGuild(guild) {
+  await ensureWeeklyDropSchedule(guild).catch((error) => {
+    console.error(`❌ Theater Drop scheduler failed for ${guild.name}:`, error.message);
+  });
+}
 
 export const name = Events.MessageCreate;
 
@@ -201,52 +384,6 @@ export async function execute(message) {
       }
 
       await updateEconomy(userId, { exp: newExp, coins: newCoins, level: newLevel, rank: getRank(newLevel), theater_credits: newTC });
-    } catch {}
-  }
-
-  // ─── Channel message counter → Theater drops ─────────────────────────────────
-  const chanKey = `${guildId}:${channelId}`;
-  const count   = (channelMsgCount.get(chanKey) || 0) + 1;
-  channelMsgCount.set(chanKey, count);
-
-  if (count % DROP_EVERY === 0 && !pendingDrops.has(channelId)) {
-    const template = DROP_MESSAGES[Math.floor(Math.random() * DROP_MESSAGES.length)];
-    const amount   = rand(template.min, template.max);
-    const expiry   = Date.now() + DROP_EXPIRE;
-
-    try {
-      const embed = new EmbedBuilder()
-        .setColor(NILOU_RED)
-        .setDescription(`✨ **Theater Drop!**\n\n${template.text}\n\n*Expires in 2 minutes.*`)
-        .setFooter({ text: "Use /collect to claim · First come first served" });
-
-      const redirect = dropChannels.get(guildId);
-      let dropMsg;
-      if (redirect) {
-        const redirectChannel = await message.guild.channels.fetch(redirect.channelId).catch(() => null);
-        if (redirectChannel?.isTextBased()) {
-          dropMsg = await redirectChannel.send({ embeds: [embed] });
-        }
-      }
-      if (!dropMsg) {
-        dropMsg = await message.channel.send({ embeds: [embed] });
-      }
-
-      // Store drop keyed by the channel it was triggered in so /collect works from there
-      pendingDrops.set(channelId, {
-        guildId, amount, type: template.type,
-        itemName: null, itemId: null,
-        msgId: dropMsg.id, expiry,
-      });
-
-      // Auto-expire: delete embed and remove from map
-      setTimeout(async () => {
-        if (pendingDrops.get(channelId)?.msgId === dropMsg.id) {
-          pendingDrops.delete(channelId);
-          try { await dropMsg.delete(); } catch {}
-        }
-      }, DROP_EXPIRE);
-
     } catch {}
   }
 

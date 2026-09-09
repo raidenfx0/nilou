@@ -411,6 +411,13 @@ export async function ensureTables() {
     ADD COLUMN IF NOT EXISTS drops_channel_id VARCHAR(50)
   `).catch(() => {});
 
+  // Persist the three randomly-timed Theater Drops for each UTC week.
+  await pool.query(`
+    ALTER TABLE guild_settings
+    ADD COLUMN IF NOT EXISTS theater_drop_week VARCHAR(20),
+    ADD COLUMN IF NOT EXISTS theater_drop_schedule JSONB
+  `).catch(() => {});
+
   // Ensure music_connections table for Last.fm / Spotify linking
   await pool.query(`
     CREATE TABLE IF NOT EXISTS music_connections (
@@ -683,6 +690,19 @@ export async function hydrateStore(store) {
   }
   for (const row of settings) {
     if (row.drops_channel_id) store.dropChannels.set(row.guild_id, { channelId: row.drops_channel_id });
+    if (row.theater_drop_week && row.theater_drop_schedule) {
+      try {
+        const schedule = typeof row.theater_drop_schedule === "string"
+          ? JSON.parse(row.theater_drop_schedule)
+          : row.theater_drop_schedule;
+        if (Array.isArray(schedule?.slots)) {
+          store.dropSchedules.set(row.guild_id, {
+            weekKey: row.theater_drop_week,
+            slots: schedule.slots,
+          });
+        }
+      } catch {}
+    }
 
     if (row.admin_role_id) store.adminRoles.set(row.guild_id, row.admin_role_id);
 
