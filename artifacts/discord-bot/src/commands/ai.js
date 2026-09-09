@@ -90,7 +90,7 @@ function truncateResponse(text) {
 function createAssistantEmbed(answer, attachment = null) {
   const embed = new EmbedBuilder()
     .setColor(NILOU_RED)
-    .setTitle("✦ Nilou’s Assistant")
+    .setTitle("✦ Nilou AI")
     .setDescription(answer)
     .setFooter({
       text: attachment
