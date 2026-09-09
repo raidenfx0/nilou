@@ -1,5 +1,6 @@
-import { SlashCommandBuilder } from "discord.js";
+import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { NILOU_RED } from "../theme.js";
 
 // Older Gemini Flash models are unavailable to this API key. The API error
 // directs new users to this current multimodal Flash model.
@@ -13,7 +14,12 @@ const SYSTEM_INSTRUCTION =
   "attached images when provided. Give the answer directly and keep it short, " +
   "clear, friendly, and easy to understand. Use small bullet lists or steps when " +
   "helpful. For math, show the key calculation briefly and do not guess. If you " +
-  "are unsure, say so and ask one clear follow-up question. Avoid unnecessary " +
+  "show any math operation, division, equation, fraction, formula, algebra, or " +
+  "integral, put it in a Discord fenced code block using exactly three backticks " +
+  "on their own lines. Use readable plain text or Unicode such as `÷`, `/`, `²`, " +
+  "and `∫` instead of LaTeX delimiters. For example:\n" +
+  "```\n12 ÷ 3 = 4\n∫ x² dx = x³/3 + C\n```\n" +
+  "If you are unsure, say so and ask one clear follow-up question. Avoid unnecessary " +
   "disclaimers, long introductions, and excessive poetic language or roleplay. " +
   "You may have a gentle, warm touch of Nilou from the Zubayr Theater from " +
   "Genshin Impact, but never let the character persona get in the way of helping. " +
@@ -40,10 +46,64 @@ export const data = new SlashCommandBuilder()
       ),
   );
 
+function toReadableMath(text) {
+  return text
+    .replace(/\\frac\s*{([^{}]+)}\s*{([^{}]+)}/g, "($1) / ($2)")
+    .replace(/\\sqrt\s*{([^{}]+)}/g, "√($1)")
+    .replace(/\\left|\\right/g, "")
+    .replace(/\\cdot/g, "·")
+    .replace(/\\times/g, "×")
+    .replace(/\\div/g, "÷")
+    .replace(/\\leq/g, "≤")
+    .replace(/\\geq/g, "≥")
+    .replace(/\\neq/g, "≠")
+    .replace(/\\pi/g, "π")
+    .replace(/\\int/g, "∫")
+    .replace(/\\sum/g, "Σ")
+    .replace(/\\(?:text|mathrm)\s*{([^{}]+)}/g, "$1");
+}
+
+function normalizeMathFormatting(text) {
+  let formatted = String(text || "").trim();
+  const fencedMath = (match, math) => `\`\`\`\n${toReadableMath(math.trim())}\n\`\`\``;
+
+  // Convert common LaTeX math wrappers into Discord-readable code blocks.
+  formatted = formatted
+    .replace(/\$\$([\s\S]*?)\$\$/g, fencedMath)
+    .replace(/\\\[([\s\S]*?)\\\]/g, fencedMath)
+    .replace(/\\\(([\s\S]*?)\\\)/g, fencedMath);
+
+  return formatted;
+}
+
 function truncateResponse(text) {
-  const clean = String(text || "").trim();
+  const clean = normalizeMathFormatting(text);
   if (clean.length <= MAX_RESPONSE_LENGTH) return clean;
-  return `${clean.slice(0, MAX_RESPONSE_LENGTH - 1).trimEnd()}…`;
+
+  let truncated = `${clean.slice(0, MAX_RESPONSE_LENGTH - 1).trimEnd()}…`;
+  if ((truncated.match(/```/g) || []).length % 2 === 1) {
+    truncated += "\n```";
+  }
+  return truncated;
+}
+
+function createAssistantEmbed(answer, attachment = null) {
+  const embed = new EmbedBuilder()
+    .setColor(NILOU_RED)
+    .setTitle("✦ Nilou’s Assistant")
+    .setDescription(answer)
+    .setFooter({
+      text: attachment
+        ? "🖼️ Image assistant • Short, clear help"
+        : "🌸 Personal assistant • Short, clear help",
+    })
+    .setTimestamp();
+
+  if (attachment) {
+    embed.setThumbnail(attachment.url);
+  }
+
+  return embed;
 }
 
 async function fetchImagePart(attachment) {
@@ -104,9 +164,14 @@ export async function execute(interaction) {
     const result = await model.generateContent(parts);
     const answer = truncateResponse(result.response.text());
 
-    await interaction.editReply(
-      answer || "🌸 I’m here with you, but my thoughts are still taking shape.",
-    );
+    await interaction.editReply({
+      embeds: [
+        createAssistantEmbed(
+          answer || "🌸 I’m here with you, but my thoughts are still taking shape.",
+          attachment,
+        ),
+      ],
+    });
   } catch (error) {
     console.error("❌ /ai ask failed:", error);
     await interaction.editReply(
