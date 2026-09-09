@@ -1,9 +1,9 @@
 import { SlashCommandBuilder } from "discord.js";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-// Gemini 1.5 Flash is no longer exposed by the configured Gemini API.
-// 2.5 Flash supports the same text + image flow and is the current fast model.
-const MODEL_NAME = "gemini-2.5-flash";
+// Older Gemini Flash models are unavailable to this API key. The API error
+// directs new users to this current multimodal Flash model.
+const MODEL_NAME = "gemini-3.6-flash";
 const MAX_RESPONSE_LENGTH = 1900;
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const SYSTEM_INSTRUCTION =
