@@ -49,7 +49,7 @@ import {
   starboards,
   starboardEntries,
 } from "./data/store.js";
-import { NILOU_RED, FOOTER_MAIN, DIVIDER } from "./theme.js";
+import { NILOU_RED, NILOU_RED_DARK, FOOTER_MAIN, DIVIDER } from "./theme.js";
 import { isAdmin } from "./utils/adminCheck.js";
 import { buildCountdownEmbed } from "./commands/countdown.js";
 import { openTicket, closeTicket, closeEmbed } from "./commands/ticket.js";
@@ -402,7 +402,17 @@ client.on(Events.InteractionCreate, async (interaction) => {
     } catch (err) {
       console.error(`Error in /${interaction.commandName}:`, err);
       const reply = {
-        content: "❌ Something went wrong with this command.",
+        embeds: [
+          new EmbedBuilder()
+            .setColor(NILOU_RED_DARK)
+            .setTitle("🌧️ This command needs another try")
+            .setDescription(
+              `I couldn't complete \`/${interaction.commandName}\` right now.\n\n` +
+              "Please try again in a moment. If it keeps happening, let a server moderator know.",
+            )
+            .setFooter({ text: "Nilou Bot • Temporary command error" })
+            .setTimestamp(),
+        ],
         ephemeral: true,
       };
       if (interaction.replied || interaction.deferred) {

@@ -3,7 +3,7 @@ import {
   ActionRowBuilder, StringSelectMenuBuilder,
   ButtonBuilder, ButtonStyle,
 } from "discord.js";
-import { NILOU_RED } from "../theme.js";
+import { NILOU_RED, FOOTER_MAIN } from "../theme.js";
 
 const SUPPORT_LINK = "https://discord.gg/9zB8bdmCj7";
 
@@ -22,6 +22,7 @@ const CATEGORIES = [
 const COMMANDS = {
   general: [
     { cmd: "about",      desc: "About Nilou Bot" },
+    { cmd: "ai ask",     desc: "Quick help, math, planning, or image analysis" },
     { cmd: "botinfo",    desc: "Bot statistics and uptime" },
     { cmd: "echo",       desc: "Send a message anonymously" },
     { cmd: "help",       desc: "View this command menu" },
@@ -108,12 +109,16 @@ function buildOverviewEmbed() {
   const catLines = CATEGORIES.map(c => `${c.emoji} **${c.label}** — ${c.desc}`).join("\n");
   return new EmbedBuilder()
     .setColor(NILOU_RED)
-    .setTitle("Nilou Bot — Command Guide")
+    .setAuthor({ name: "Nilou Bot • Command Center" })
+    .setTitle("✦ Command Guide")
     .setDescription(
-      `Select a category below to browse commands.\n\n${catLines}\n\n` +
+      `Choose a category below to browse commands.\n\n${catLines}\n\n` +
+      `**Quick start**\n` +
+      `\`/ai ask\` for quick questions, math, planning, or image help.\n` +
+      `\`/help\` anytime to reopen this menu.\n\n` +
       `Need help? [Join the support server](${SUPPORT_LINK}).`
     )
-    .setFooter({ text: "Nilou Bot" })
+    .setFooter(FOOTER_MAIN)
     .setTimestamp();
 }
 
@@ -129,9 +134,10 @@ function buildCategoryEmbed(catId, page = 0) {
 
   const embed = new EmbedBuilder()
     .setColor(NILOU_RED)
+    .setAuthor({ name: "Nilou Bot • Command Center" })
     .setTitle(`${cat.emoji} ${cat.label}`)
     .setDescription(desc)
-    .setFooter({ text: `Page ${p + 1} of ${totalPages} | [Support Server](${SUPPORT_LINK})` })
+    .setFooter({ text: `Page ${p + 1} of ${totalPages} • Use /help to return` })
     .setTimestamp();
 
   return { embed, totalPages, p };
@@ -198,7 +204,11 @@ export async function handleHelpButton(interaction) {
   const id = interaction.customId;
 
   if (id === "help_close") {
-    await interaction.update({ content: "Help menu closed.", embeds: [], components: [] });
+    await interaction.update({
+      content: "🌸 Help menu closed. Use `/help` whenever you need it.",
+      embeds: [],
+      components: [],
+    });
     return;
   }
 
