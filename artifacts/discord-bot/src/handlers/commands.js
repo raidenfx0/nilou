@@ -45,6 +45,7 @@ import * as scrobbleCmd      from "../commands/scrobble.js";
 import * as nowplayingCmd    from "../commands/nowplaying.js";
 import * as fmCmd            from "../commands/fm.js";
 import * as fmrecentCmd      from "../commands/fmrecent.js";
+import * as aiCmd            from "../commands/ai.js";
 
 export function loadCommands(client) {
   client.commands = new Collection();
@@ -60,6 +61,7 @@ export function loadCommands(client) {
     warnCmd, loggingCmd, economyCmd, gamblingCmd, countingCmd,
     collectCmd, starboardCmd, dropsCmd,
     connectCmd, scrobbleCmd, nowplayingCmd, fmCmd, fmrecentCmd,
+    aiCmd,
   ];
 
   for (const cmd of commands) {

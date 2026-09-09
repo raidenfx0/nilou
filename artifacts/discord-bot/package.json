@@ -12,6 +12,7 @@
     "@distube/soundcloud": "^2.0.4",
     "@distube/spotify": "^2.0.2",
     "@distube/youtube": "^1.0.4",
+    "@google/generative-ai": "^0.24.1",
     "@napi-rs/canvas": "^0.1.97",
     "discord.js": "^14.19.3",
     "express": "^4.22.1",
