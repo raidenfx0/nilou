@@ -333,18 +333,11 @@ client.once(Events.ClientReady, async (readyClient) => {
   console.log(`✅ Logged in as ${readyClient.user.tag}`);
   readyClient.user.setPresence({
     status: "online",
-    activities: [
-      {
-        name: "Custom Status",
-        state: "I love soda",
-        type: ActivityType.Custom,
-      },
-      {
-        name: "Dancing in the theater",
-        type: ActivityType.Streaming,
-        url: "https://youtu.be/dQw4w9WgXcQ?si=h6aLaUHqzqVXRQ5r",
-      },
-    ],
+    activities: [{
+      name: "Dancing in the theater",
+      type: ActivityType.Streaming,
+      url: "https://youtu.be/dQw4w9WgXcQ?si=h6aLaUHqzqVXRQ5r",
+    }],
   });
   // Restore giveaway timers after restart (so active giveaways auto-end on time)
   restoreGiveawayTimers(readyClient);
