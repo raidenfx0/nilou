@@ -334,9 +334,9 @@ client.once(Events.ClientReady, async (readyClient) => {
   readyClient.user.setPresence({
     status: "online",
     activities: [{
-      name: "Dancing in the theater",
+      name: "I love soda",
       type: ActivityType.Streaming,
-      url: "https://youtu.be/dQw4w9WgXcQ?si=h6aLaUHqzqVXRQ5r",
+      url: "https://youtu.be/ysb3arIht0M?si=4t69-TsHYjkgzd3f",
     }],
   });
   // Restore giveaway timers after restart (so active giveaways auto-end on time)
