@@ -1,5 +1,13 @@
-import { SlashCommandBuilder, EmbedBuilder } from "discord.js";
+import {
+  SlashCommandBuilder,
+  EmbedBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+} from "discord.js";
 import { NILOU_RED, FOOTER_MAIN, DIVIDER } from "../theme.js";
+
+const YOUTUBE_LINK = "https://youtu.be/ysb3arIht0M?si=4t69-TsHYjkgzd3f";
 
 export const data = new SlashCommandBuilder()
   .setName("botinfo")
@@ -37,9 +45,19 @@ export async function execute(interaction) {
       { name: "💧 Ping",        value: `**${ping}ms**`, inline: true },
       { name: "⏱️ Uptime",      value: `**${uptimeStr}**`, inline: true },
       { name: "✨ Theme",       value: "**Nilou — Hydro Dancer of Sumeru**", inline: true },
+      { name: "💬 Status",      value: "**I love soda**", inline: true },
     )
     .setFooter({ text: "🌸 Nilou — Made with love by soda" })
     .setTimestamp();
 
-  await interaction.reply({ embeds: [embed] });
+  const youtubeButton = new ButtonBuilder()
+    .setLabel("Watch on YouTube")
+    .setEmoji("▶️")
+    .setStyle(ButtonStyle.Link)
+    .setURL(YOUTUBE_LINK);
+
+  await interaction.reply({
+    embeds: [embed],
+    components: [new ActionRowBuilder().addComponents(youtubeButton)],
+  });
 }
