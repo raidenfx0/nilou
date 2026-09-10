@@ -29,11 +29,13 @@ async function execute(interaction) {
       ephemeral: true,
     });
   } else {
-    if (!afkUsers.has(key)) {
+    const wasAfk = afkUsers.delete(key);
+    // Always clear the database row too. This handles stale AFK records
+    // that were hydrated after a previous automatic in-message clear.
+    await clearAfk(interaction.guildId, interaction.user.id);
+    if (!wasAfk) {
       return interaction.reply({ content: "🌸 You are not currently AFK!", ephemeral: true });
     }
-    afkUsers.delete(key);
-    await clearAfk(interaction.guildId, interaction.user.id);
 
     await interaction.reply({
       embeds: [new EmbedBuilder().setColor(NILOU_RED).setTitle("✦ AFK Cleared")

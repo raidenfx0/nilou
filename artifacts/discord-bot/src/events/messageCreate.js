@@ -1,7 +1,7 @@
 import { Events, EmbedBuilder, AttachmentBuilder } from "discord.js";
 import { stickyMessages, afkUsers, triggers, countingChannels, pendingDrops, dropChannels, dropSchedules, activityCounters } from "../data/store.js";
 import { NILOU_RED, FOOTER_STICKY, DIVIDER } from "../theme.js";
-import { getEconomy, updateEconomy, upsertCountingConfig, updateStickyLastMessage, upsertUserActivity, upsertGuildSettings } from "../db/index.js";
+import { getEconomy, updateEconomy, upsertCountingConfig, updateStickyLastMessage, upsertUserActivity, upsertGuildSettings, clearAfk } from "../db/index.js";
 import { createLevelCard } from "../utils/levelCard.js";
 
 const chatCooldowns   = new Map(); // `${guildId}:${userId}` → timestamp
@@ -285,6 +285,7 @@ export async function execute(message) {
   const afkKey = `${guildId}:${userId}`;
   if (afkUsers.has(afkKey)) {
     afkUsers.delete(afkKey);
+    await clearAfk(guildId, userId).catch(() => {});
     const m = await message.channel.send(`🌸 Welcome back, ${message.author}! Your AFK has been cleared.`);
     setTimeout(() => m.delete().catch(() => {}), 6000);
   }

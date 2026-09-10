@@ -14,6 +14,7 @@ import {
 
 const DAY = 86400000;
 const MAX_PARTICIPANTS_PER_PAGE = 10;
+const BONUS_ROLE_SLOTS = 5;
 
 function parseDuration(str) {
   const match = String(str || "").match(/^(\d+)(s|m|h|d|w)$/i);
@@ -148,8 +149,16 @@ export const data = new SlashCommandBuilder()
     .addStringOption(o => o.setName("duration").setDescription("Examples: 1h, 30m, 2d, 1w").setRequired(true))
     .addIntegerOption(o => o.setName("winners").setDescription("Number of winners").setMinValue(1).setMaxValue(20))
     .addChannelOption(o => o.setName("channel").setDescription("Channel to post in"))
-    .addRoleOption(o => o.setName("bonus_role").setDescription("Role that gets bonus entries"))
-    .addIntegerOption(o => o.setName("bonus_entries").setDescription("Extra entries for the bonus role").setMinValue(1).setMaxValue(20))
+    .addRoleOption(o => o.setName("bonus_role").setDescription("Bonus role 1"))
+    .addIntegerOption(o => o.setName("bonus_entries").setDescription("Extra entries for bonus role 1").setMinValue(1).setMaxValue(100))
+    .addRoleOption(o => o.setName("bonus_role_2").setDescription("Bonus role 2"))
+    .addIntegerOption(o => o.setName("bonus_entries_2").setDescription("Extra entries for bonus role 2").setMinValue(1).setMaxValue(100))
+    .addRoleOption(o => o.setName("bonus_role_3").setDescription("Bonus role 3"))
+    .addIntegerOption(o => o.setName("bonus_entries_3").setDescription("Extra entries for bonus role 3").setMinValue(1).setMaxValue(100))
+    .addRoleOption(o => o.setName("bonus_role_4").setDescription("Bonus role 4"))
+    .addIntegerOption(o => o.setName("bonus_entries_4").setDescription("Extra entries for bonus role 4").setMinValue(1).setMaxValue(100))
+    .addRoleOption(o => o.setName("bonus_role_5").setDescription("Bonus role 5"))
+    .addIntegerOption(o => o.setName("bonus_entries_5").setDescription("Extra entries for bonus role 5").setMinValue(1).setMaxValue(100))
     .addRoleOption(o => o.setName("required_role").setDescription("Role required to enter"))
     .addRoleOption(o => o.setName("excluded_role").setDescription("Role that cannot enter"))
     .addRoleOption(o => o.setName("bypass_role").setDescription("Role that bypasses positive requirements"))
@@ -172,14 +181,21 @@ export async function execute(interaction) {
     if (!duration) return interaction.reply({ content: "❌ Invalid duration. Use `1h`, `30m`, `2d`, or `1w` (maximum 365 days).", ephemeral: true });
 
     const channel = interaction.options.getChannel("channel") || interaction.channel;
-    const bonusRole = interaction.options.getRole("bonus_role");
+    const roleBonus = {};
+    for (let slot = 1; slot <= BONUS_ROLE_SLOTS; slot += 1) {
+      const suffix = slot === 1 ? "" : `_${slot}`;
+      const role = interaction.options.getRole(`bonus_role${suffix}`);
+      if (!role) continue;
+      const entries = interaction.options.getInteger(`bonus_entries${suffix}`) || 1;
+      roleBonus[role.id] = (roleBonus[role.id] || 0) + entries;
+    }
     const endTime = Date.now() + duration;
     const gw = {
       prize: interaction.options.getString("prize"),
       winnerCount: interaction.options.getInteger("winners") || 1,
       endTime, hostId: interaction.user.id, guildId: interaction.guildId, channelId: channel.id,
       ended: false, entrants: new Set(), winners: [], entryWeights: {},
-      roleBonus: bonusRole ? { [bonusRole.id]: interaction.options.getInteger("bonus_entries") || 1 } : {},
+      roleBonus,
       requiredRoleId: interaction.options.getRole("required_role")?.id || null,
       excludedRoleId: interaction.options.getRole("excluded_role")?.id || null,
       bypassRoleId: interaction.options.getRole("bypass_role")?.id || null,
