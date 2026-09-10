@@ -2,7 +2,7 @@ import {
   SlashCommandBuilder, EmbedBuilder,
   ActionRowBuilder, ButtonBuilder, ButtonStyle,
 } from "discord.js";
-import { NILOU_RED, FOOTER_MAIN, DIVIDER } from "../theme.js";
+import { NILOU_RED, NILOU_RED_DARK, FOOTER_MAIN, DIVIDER } from "../theme.js";
 import { isAdmin, denyAdmin } from "../utils/adminCheck.js";
 import { giveaways, activityCounters } from "../data/store.js";
 import {
@@ -68,24 +68,40 @@ function buildGiveawayEmbed(gw, guild = null) {
     ([roleId, amount]) => `${roleLabel(guild, roleId) || `<@&${roleId}>`}: **+${amount} entries**`,
   );
   const requirements = requirementLines(gw, guild);
-  const parts = [
-    `Click 🎉 button to enter!`,
-    `Winners: **${gw.winnerCount}**`,
-    `Hosted by: <@${gw.hostId}>`,
-    ended ? "Status: **Ended**" : `Ends: <t:${endTs}:R> (<t:${endTs}:F>)`,
-    "",
-    `Participants: **${participants}** · Tickets: **${totalTickets(gw)}**`,
-  ];
-  if (bonusLines.length) parts.push("", "**Extra Entries:**", bonusLines.join("\n"));
-  if (requirements.length) parts.push("", "**Requirements:**", requirements.join("\n"));
-  if (gw.bypassRoleId && requirements.length) {
-    parts.push(`Requirements Bypass Role: ${roleLabel(guild, gw.bypassRoleId)}`);
-  }
-
   return new EmbedBuilder()
-    .setColor(NILOU_RED)
-    .setTitle(`🎊 ✦ ${gw.prize}`)
-    .setDescription(`${DIVIDER}\n${parts.join("\n")}\n${DIVIDER}`)
+    .setColor(ended ? NILOU_RED_DARK : NILOU_RED)
+    .setTitle(`🎊 ${gw.prize}`)
+    .setDescription(
+      ended
+        ? "This giveaway has ended. Thank you to everyone who participated."
+        : "Click the button below to enter. Good luck!",
+    )
+    .addFields(
+      { name: "Winners", value: `**${gw.winnerCount}**`, inline: true },
+      { name: "Participants", value: `**${participants}**`, inline: true },
+      { name: "Weighted tickets", value: `**${totalTickets(gw)}**`, inline: true },
+      { name: "Hosted by", value: `<@${gw.hostId}>`, inline: true },
+      {
+        name: ended ? "Status" : "Ends",
+        value: ended ? "**Ended**" : `<t:${endTs}:R>\n<t:${endTs}:F>`,
+        inline: true,
+      },
+      ...(bonusLines.length
+        ? [{ name: "Bonus entries", value: bonusLines.join("\n"), inline: false }]
+        : []),
+      ...(requirements.length
+        ? [{
+            name: "Requirements",
+            value: [
+              ...requirements,
+              gw.bypassRoleId
+                ? `Bypass role: ${roleLabel(guild, gw.bypassRoleId)}`
+                : null,
+            ].filter(Boolean).join("\n"),
+            inline: false,
+          }]
+        : []),
+    )
     .setFooter({ text: ended ? "🌸 Giveaway Ended" : "🌸 Enter for a chance to win!" })
     .setTimestamp();
 }

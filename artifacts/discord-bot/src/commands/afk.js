@@ -1,5 +1,5 @@
 import { SlashCommandBuilder, EmbedBuilder } from "discord.js";
-import { NILOU_RED, FOOTER_MAIN, DIVIDER } from "../theme.js";
+import { NILOU_RED, FOOTER_MAIN } from "../theme.js";
 import { afkUsers } from "../data/store.js";
 import { setAfk, clearAfk } from "../db/index.js";
 
@@ -24,7 +24,11 @@ async function execute(interaction) {
 
     await interaction.reply({
       embeds: [new EmbedBuilder().setColor(NILOU_RED).setTitle("✦ AFK Status Set")
-        .setDescription(`${DIVIDER}\n🌸 You are now AFK!\nReason: ${reason}\n${DIVIDER}`)
+        .setDescription("Your AFK status is active. I’ll let others know when they mention you.")
+        .addFields(
+          { name: "Reason", value: reason, inline: false },
+          { name: "Started", value: `<t:${Math.floor(since / 1000)}:R>`, inline: true },
+        )
         .setFooter(FOOTER_MAIN).setTimestamp()],
       ephemeral: true,
     });
@@ -39,7 +43,8 @@ async function execute(interaction) {
 
     await interaction.reply({
       embeds: [new EmbedBuilder().setColor(NILOU_RED).setTitle("✦ AFK Cleared")
-        .setDescription(`${DIVIDER}\n🌸 Welcome back! Your AFK has been removed.\n${DIVIDER}`)
+        .setDescription("Welcome back. Your AFK status has been removed.")
+        .addFields({ name: "Status", value: "You’re available again.", inline: true })
         .setFooter(FOOTER_MAIN).setTimestamp()],
       ephemeral: true,
     });
