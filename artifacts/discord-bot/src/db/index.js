@@ -1,5 +1,6 @@
 import pg from "pg";
 const { Pool } = pg;
+const MAX_AFK_AGE_MS = 30 * 86400000;
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
 export { pool };
@@ -622,8 +623,13 @@ export async function hydrateStore(store) {
   ]);
 
   for (const row of afk) {
+    const since = Number(row.since);
+    if (!Number.isFinite(since) || since <= 0 || Date.now() - since > MAX_AFK_AGE_MS) {
+      await clearAfk(row.guild_id, row.user_id).catch(() => {});
+      continue;
+    }
     store.afkUsers.set(`${row.guild_id}:${row.user_id}`, {
-      userId: row.user_id, guildId: row.guild_id, reason: row.reason, since: Number(row.since),
+      userId: row.user_id, guildId: row.guild_id, reason: row.reason, since,
     });
   }
   for (const row of sticky) {
