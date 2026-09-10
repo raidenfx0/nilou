@@ -6,6 +6,7 @@ import {
 import { NILOU_RED, FOOTER_MAIN } from "../theme.js";
 
 const SUPPORT_LINK = "https://discord.gg/9zB8bdmCj7";
+const YOUTUBE_LINK = "https://youtu.be/ysb3arIht0M?si=4t69-TsHYjkgzd3f";
 
 const CATEGORIES = [
   { id: "general",    label: "General",    emoji: "📋", desc: "Bot info, utilities, and basic commands" },
@@ -158,6 +159,16 @@ function buildSelectRow() {
   return new ActionRowBuilder().addComponents(select);
 }
 
+function buildYouTubeRow() {
+  const button = new ButtonBuilder()
+    .setLabel("Watch on YouTube")
+    .setEmoji("▶️")
+    .setStyle(ButtonStyle.Link)
+    .setURL(YOUTUBE_LINK);
+
+  return new ActionRowBuilder().addComponents(button);
+}
+
 function buildNavRow(catId, page, totalPages) {
   const prev = new ButtonBuilder()
     .setCustomId(`help_prev:${catId}:${page}`)
@@ -188,7 +199,8 @@ export const data = new SlashCommandBuilder()
 export async function execute(interaction) {
   const embed = buildOverviewEmbed();
   const row = buildSelectRow();
-  await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
+  const youtubeRow = buildYouTubeRow();
+  await interaction.reply({ embeds: [embed], components: [row, youtubeRow], ephemeral: true });
 }
 
 export async function handleHelpSelect(interaction) {
@@ -196,8 +208,9 @@ export async function handleHelpSelect(interaction) {
   const { embed, totalPages } = buildCategoryEmbed(catId, 0);
   const navRow = buildNavRow(catId, 0, totalPages);
   const selectRow = buildSelectRow();
+  const youtubeRow = buildYouTubeRow();
 
-  await interaction.update({ embeds: [embed], components: [selectRow, navRow] });
+  await interaction.update({ embeds: [embed], components: [selectRow, navRow, youtubeRow] });
 }
 
 export async function handleHelpButton(interaction) {
@@ -232,6 +245,7 @@ export async function handleHelpButton(interaction) {
   const { embed, totalPages, p } = buildCategoryEmbed(catId, page);
   const navRow = buildNavRow(catId, p, totalPages);
   const selectRow = buildSelectRow();
+  const youtubeRow = buildYouTubeRow();
 
-  await interaction.update({ embeds: [embed], components: [selectRow, navRow] });
+  await interaction.update({ embeds: [embed], components: [selectRow, navRow, youtubeRow] });
 }
