@@ -44,6 +44,53 @@ export async function getAllAfk() {
   return r.rows;
 }
 
+// ─── ModMail ─────────────────────────────────────────────────────────────────
+export async function upsertModmailConfig(config) {
+  await pool.query(
+    `INSERT INTO modmail_config (guild_id, category_id, log_channel_id, staff_role_id, enabled)
+     VALUES ($1,$2,$3,$4,$5)
+     ON CONFLICT (guild_id) DO UPDATE SET
+       category_id=$2, log_channel_id=$3, staff_role_id=$4, enabled=$5, updated_at=NOW()`,
+    [config.guildId, config.categoryId, config.logChannelId, config.staffRoleId, config.enabled !== false],
+  );
+}
+
+export async function getAllModmailConfigs() {
+  const result = await pool.query("SELECT * FROM modmail_config");
+  return result.rows;
+}
+
+export async function createModmailTicket(ticket) {
+  await pool.query(
+    `INSERT INTO modmail_tickets
+       (channel_id, guild_id, user_id, username, category_key, category_name, opened_at, open)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,TRUE)
+     ON CONFLICT (channel_id) DO UPDATE SET
+       username=$4, category_key=$5, category_name=$6, opened_at=$7, open=TRUE`,
+    [ticket.channelId, ticket.guildId, ticket.userId, ticket.username,
+      ticket.categoryKey, ticket.categoryName, ticket.openedAt],
+  );
+}
+
+export async function updateModmailTicketCategory(channelId, categoryKey, categoryName) {
+  await pool.query(
+    "UPDATE modmail_tickets SET category_key=$2, category_name=$3 WHERE channel_id=$1 AND open=TRUE",
+    [channelId, categoryKey, categoryName],
+  );
+}
+
+export async function closeModmailTicket(channelId) {
+  await pool.query(
+    "UPDATE modmail_tickets SET open=FALSE WHERE channel_id=$1",
+    [channelId],
+  );
+}
+
+export async function getOpenModmailTickets() {
+  const result = await pool.query("SELECT * FROM modmail_tickets WHERE open=TRUE");
+  return result.rows;
+}
+
 // ─── Sticky Messages ───────────────────────────────────────────────────────────────
 export async function upsertSticky(guildId, channelId, data) {
   const { title, content, color, sticky_type } = data;
@@ -439,6 +486,29 @@ export async function ensureTables() {
     ALTER TABLE giveaways ADD COLUMN IF NOT EXISTS entry_weights TEXT DEFAULT '{}';
   `).catch(() => {});
 
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS modmail_config (
+      guild_id VARCHAR(50) PRIMARY KEY,
+      category_id VARCHAR(50) NOT NULL,
+      log_channel_id VARCHAR(50) NOT NULL,
+      staff_role_id VARCHAR(50) NOT NULL,
+      enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS modmail_tickets (
+      channel_id VARCHAR(50) PRIMARY KEY,
+      guild_id VARCHAR(50) NOT NULL,
+      user_id VARCHAR(50) NOT NULL,
+      username VARCHAR(100) NOT NULL,
+      category_key VARCHAR(50) NOT NULL,
+      category_name VARCHAR(100) NOT NULL,
+      opened_at BIGINT NOT NULL,
+      open BOOLEAN NOT NULL DEFAULT TRUE
+    );
+    CREATE INDEX IF NOT EXISTS idx_modmail_tickets_user_open
+      ON modmail_tickets (user_id, open);
+  `);
+
   console.log("\u2705 Auto-created activity, music, economy and giveaway tables; migration complete");
 }
 
@@ -616,10 +686,10 @@ export async function getUidDb(discordId) {
 
 // ─── Startup Hydration ───────────────────────────────────────────────────────────────────────────────────────
 export async function hydrateStore(store) {
-  const [afk, sticky, tix, giveaways, trigs, cds, settings, countingRows, allStarboards, allEntries] = await Promise.all([
+  const [afk, sticky, tix, giveaways, trigs, cds, settings, countingRows, allStarboards, allEntries, modmailConfigs, modmailTickets] = await Promise.all([
     getAllAfk(), getAllSticky(), getAllTickets(), getAllGiveaways(),
     getAllTriggers(), getAllCountdowns(), getAllGuildSettings(), getAllCountingConfigs(),
-    getAllStarboards(), getAllStarboardEntries(),
+    getAllStarboards(), getAllStarboardEntries(), getAllModmailConfigs(), getOpenModmailTickets(),
   ]);
 
   for (const row of afk) {
@@ -737,6 +807,27 @@ export async function hydrateStore(store) {
       events:    JSON.parse(row.log_events || "[]"),
     });
   }
+  for (const row of modmailConfigs) {
+    store.modmailConfigs.set(row.guild_id, {
+      guildId: row.guild_id,
+      categoryId: row.category_id,
+      logChannelId: row.log_channel_id,
+      staffRoleId: row.staff_role_id,
+      enabled: row.enabled,
+    });
+  }
+  for (const row of modmailTickets) {
+    store.modmailTickets.set(row.channel_id, {
+      channelId: row.channel_id,
+      guildId: row.guild_id,
+      userId: row.user_id,
+      username: row.username,
+      categoryKey: row.category_key,
+      categoryName: row.category_name,
+      openedAt: Number(row.opened_at),
+      open: row.open,
+    });
+  }
 
-  console.log(`✅ DB hydrated — afk:${afk.length} sticky:${sticky.length} tickets:${tix.length} giveaways:${giveaways.length} triggers:${trigs.length} counting:${countingRows.length} starboards:${allStarboards.length} entries:${allEntries.length}`);
+  console.log(`✅ DB hydrated — afk:${store.afkUsers.size} sticky:${sticky.length} tickets:${tix.length} modmail:${modmailTickets.length} giveaways:${giveaways.length} triggers:${trigs.length} counting:${countingRows.length} starboards:${allStarboards.length} entries:${allEntries.length}`);
 }

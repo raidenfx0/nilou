@@ -37,6 +37,8 @@ import {
   adminRoles,
   botStats,
   giveaways,
+  modmailConfigs,
+  modmailTickets,
   triggers,
   countdowns,
   pinnedCountdowns,
@@ -55,6 +57,7 @@ import { buildCountdownEmbed } from "./commands/countdown.js";
 import { openTicket, closeTicket, closeEmbed } from "./commands/ticket.js";
 import { handleGiveawayButton, restoreGiveawayTimers } from "./commands/giveaway.js";
 import { handleHelpSelect, handleHelpButton } from "./commands/help.js";
+import { handleModmailSelect, handleModmailCloseButton } from "./commands/modmail.js";
 import { updateVoiceStatus } from "./commands/music.js";
 import {
   hydrateStore,
@@ -79,6 +82,7 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.DirectMessages,
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildMessageReactions,
     GatewayIntentBits.GuildVoiceStates,
@@ -314,7 +318,7 @@ loadCommands(client);
 loadEvents(client);
 
 const store = {
-  afkUsers, stickyMessages, tickets, ticketConfig, giveaways,
+  afkUsers, stickyMessages, tickets, ticketConfig, giveaways, modmailConfigs, modmailTickets,
   triggers, countdowns, pinnedCountdowns, adminRoles, welcomeChannels,
   loggingConfig, countingChannels, starboards, starboardEntries, dropChannels,
   dropSchedules,
@@ -393,6 +397,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
     await handleHelpSelect(interaction);
     return;
   }
+  if (interaction.isStringSelectMenu() && interaction.customId.startsWith("modmail:")) {
+    await handleModmailSelect(interaction);
+    return;
+  }
 
   if (interaction.isChatInputCommand()) {
     const command = client.commands.get(interaction.commandName);
@@ -426,6 +434,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
   if (interaction.isButton()) {
     const id = interaction.customId;
+
+    if (id.startsWith("modmail:close:")) {
+      await handleModmailCloseButton(interaction);
+      return;
+    }
 
     if (id === "btn_support" || id === "btn_appeal" || id === "btn_partnership") {
       const TYPE_MAP = {

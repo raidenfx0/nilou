@@ -3,6 +3,7 @@ import { stickyMessages, afkUsers, triggers, countingChannels, pendingDrops, dro
 import { NILOU_RED, FOOTER_STICKY, DIVIDER } from "../theme.js";
 import { getEconomy, updateEconomy, upsertCountingConfig, updateStickyLastMessage, upsertUserActivity, upsertGuildSettings, clearAfk } from "../db/index.js";
 import { createLevelCard } from "../utils/levelCard.js";
+import { handleModmailMessage } from "../commands/modmail.js";
 
 const chatCooldowns   = new Map(); // `${guildId}:${userId}` → timestamp
 
@@ -256,8 +257,12 @@ export async function scheduleTheaterDropsForGuild(guild) {
 export const name = Events.MessageCreate;
 
 export async function execute(message) {
-  if (message.author.bot) return;
-  if (!message.guild)     return;
+  if (!message || message.author?.bot) return;
+  const handledByModmail = await handleModmailMessage(message).catch((error) => {
+    console.error("ModMail message handling failed:", error.message);
+    return false;
+  });
+  if (handledByModmail || !message.guild) return;
 
   const { guildId, channelId } = message;
   const userId = message.author.id;
