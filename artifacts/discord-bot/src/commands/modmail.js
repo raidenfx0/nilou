@@ -591,12 +591,6 @@ async function handleStaffMessage(message, ticket) {
 
 export async function handleModmailMessage(message) {
   if (!message) return false;
-
-  if (message.channel?.type === ChannelType.DM) {
-    console.log(
-      `ModMail DM received (channel type: ${message.channel.type}, sender is bot: ${Boolean(message.author?.bot)}, text characters: ${String(message.content || "").length}, attachments: ${message.attachments?.size || 0}).`,
-    );
-  }
   if (message.author?.bot) return false;
 
   if (message.guild) {

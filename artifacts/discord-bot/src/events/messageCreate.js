@@ -257,7 +257,13 @@ export async function scheduleTheaterDropsForGuild(guild) {
 export const name = Events.MessageCreate;
 
 export async function execute(message) {
-  if (!message || message.author?.bot) return;
+  if (!message) return;
+  if (!message.guild) {
+    console.log(
+      `Discord non-server message event (channel type: ${message.channel?.type ?? "unknown"}, sender is bot: ${Boolean(message.author?.bot)}, text characters: ${String(message.content || "").length}, attachments: ${message.attachments?.size || 0}).`,
+    );
+  }
+  if (message.author?.bot) return;
   const handledByModmail = await handleModmailMessage(message).catch((error) => {
     console.error("ModMail message handling failed:", error.message);
     return false;
