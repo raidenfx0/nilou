@@ -20,6 +20,7 @@ import {
   Events,
   EmbedBuilder,
   ActivityType,
+  ChannelType,
 } from "discord.js";
 import { createServer } from "http";
 import { Connectors } from "shoukaku";
@@ -54,10 +55,21 @@ import {
 import { NILOU_RED, NILOU_RED_DARK, FOOTER_MAIN, DIVIDER } from "./theme.js";
 import { isAdmin } from "./utils/adminCheck.js";
 import { buildCountdownEmbed } from "./commands/countdown.js";
-import { openTicket, closeTicket, closeEmbed } from "./commands/ticket.js";
+import {
+  openTicket,
+  closeTicket,
+  closeEmbed,
+  getTicketDashboardConfig,
+  publishTicketPanel,
+  canManageTicket,
+} from "./commands/ticket.js";
 import { handleGiveawayButton, restoreGiveawayTimers } from "./commands/giveaway.js";
 import { handleHelpSelect, handleHelpButton } from "./commands/help.js";
-import { handleModmailSelect, handleModmailCloseButton } from "./commands/modmail.js";
+import {
+  handleModmailSelect,
+  handleModmailCloseButton,
+  getModmailDashboardConfig,
+} from "./commands/modmail.js";
 import { updateVoiceStatus } from "./commands/music.js";
 import {
   hydrateStore,
@@ -65,6 +77,7 @@ import {
   deleteTrigger,
   getAllWarnings,
   upsertGuildSettings,
+  upsertModmailConfig,
   getLeaderboard,
   ensureTables,
   recordMusicPlay,
@@ -338,9 +351,9 @@ client.once(Events.ClientReady, async (readyClient) => {
   readyClient.user.setPresence({
     status: "online",
     activities: [{
-      name: "Custom Status",
-      state: "I love soda",
-      type: ActivityType.Custom,
+      name: "Dancing in the theater",
+      type: ActivityType.Streaming,
+      url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
     }],
   });
   // Restore giveaway timers after restart (so active giveaways auto-end on time)
@@ -397,6 +410,22 @@ client.on(Events.InteractionCreate, async (interaction) => {
     await handleHelpSelect(interaction);
     return;
   }
+  if (interaction.isStringSelectMenu() && interaction.customId === "ticket:select") {
+    const type = interaction.values[0];
+    await interaction.deferReply({ ephemeral: true });
+    const result = await openTicket({
+      guild: interaction.guild,
+      user: interaction.user,
+      type,
+      reason: "Opened via ticket panel",
+    });
+    await interaction.editReply({
+      content: result.error
+        ? `❌ ${result.error}`
+        : `Your **${type}** ticket has been opened in ${result.channel}.`,
+    });
+    return;
+  }
   if (interaction.isStringSelectMenu() && interaction.customId.startsWith("modmail:")) {
     await handleModmailSelect(interaction);
     return;
@@ -440,13 +469,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return;
     }
 
-    if (id === "btn_support" || id === "btn_appeal" || id === "btn_partnership") {
+    if (id === "btn_support" || id === "btn_appeal" || id === "btn_partnership" || id.startsWith("ticket:open:")) {
       const TYPE_MAP = {
         btn_support: "Support",
         btn_appeal: "Appeal",
         btn_partnership: "Partnership",
       };
-      const type = TYPE_MAP[id];
+      const type = id.startsWith("ticket:open:") ? id.slice("ticket:open:".length) : TYPE_MAP[id];
 
       await interaction.deferReply({ ephemeral: true });
 
@@ -507,15 +536,17 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
         return;
       }
-      if (ticket.userId !== interaction.user.id && !isAdmin(interaction.member)) {
+      if (!canManageTicket(interaction.member, interaction.guildId, ticket)) {
         await interaction.reply({
-          content: "❌ Only the ticket owner or an admin can close this.",
+          content: "❌ Only the ticket owner or configured ticket staff can close this.",
           ephemeral: true,
         });
         return;
       }
 
-      await interaction.reply({ embeds: [closeEmbed(interaction.user)] });
+      await interaction.reply({
+        embeds: [closeEmbed(interaction.user, ticket, ticketConfig.get(interaction.guildId))],
+      });
       await closeTicket(
         interaction.channel,
         ticket,
@@ -550,6 +581,20 @@ function readBody(req) {
   });
 }
 
+const isSnowflake = (value) => /^\d{17,20}$/.test(String(value || ""));
+const textValue = (value, maxLength) => String(value ?? "").slice(0, maxLength);
+const normalizeSupportEmbed = (value = {}) => {
+  const embed = value || {};
+  return {
+    title: textValue(embed.title, 256),
+    description: textValue(embed.description, 4000),
+    color: /^#[0-9a-f]{6}$/i.test(embed.color || "") ? embed.color : "#E84057",
+    footer: textValue(embed.footer, 2048),
+    imageUrl: textValue(embed.imageUrl, 2048),
+    thumbnailUrl: textValue(embed.thumbnailUrl, 2048),
+  };
+};
+
 const server = createServer(async (req, res) => {
   res.setHeader("Content-Type", "application/json");
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -565,6 +610,22 @@ const server = createServer(async (req, res) => {
   const url = req.url?.split("?")[0];
 
   if (req.method === "GET") {
+    if (url === "/api/support") {
+      const configs = {};
+      for (const guild of client.guilds.cache.values()) {
+        configs[guild.id] = {
+          ticket: getTicketDashboardConfig(guild.id),
+          modmail: getModmailDashboardConfig(guild.id),
+        };
+      }
+      res.end(JSON.stringify({
+        configs,
+        tickets: [...tickets.values()],
+        modmailTickets: [...modmailTickets.values()],
+      }));
+      return;
+    }
+
     if (url === "/api/stats") {
       const uptime = Date.now() - botStats.startTime;
       const h = Math.floor(uptime / 3600000);
@@ -721,6 +782,165 @@ const server = createServer(async (req, res) => {
 
   if (req.method === "POST") {
     const body = await readBody(req);
+
+    if (url === "/api/support/config") {
+      const { guildId, ticket: ticketInput, modmail: modmailInput } = body;
+      if (!guildId || (!ticketInput && !modmailInput)) {
+        res.statusCode = 400;
+        res.end(JSON.stringify({ error: "guildId and ticket or modmail settings are required" }));
+        return;
+      }
+      const guild = client.guilds.cache.get(guildId);
+      if (!guild) {
+        res.statusCode = 404;
+        res.end(JSON.stringify({ error: "Server not found" }));
+        return;
+      }
+
+      try {
+        if (ticketInput) {
+          const options = Array.isArray(ticketInput.panelOptions)
+            ? ticketInput.panelOptions.slice(0, 25).map((option) => ({
+              key: textValue(option.key, 80).trim().toLowerCase(),
+              label: textValue(option.label, 80).trim(),
+              description: textValue(option.description || option.label, 100).trim(),
+              emoji: textValue(option.emoji, 100).trim(),
+              categoryId: textValue(option.categoryId, 20).trim(),
+              style: ["primary", "secondary", "success", "danger"].includes(option.style) ? option.style : "primary",
+            }))
+            : [];
+          const optionKeys = new Set(options.map((option) => option.key));
+          if (!options.length || options.some((option) =>
+            !/^[a-z0-9_-]{1,80}$/.test(option.key)
+            || !option.label
+            || (option.categoryId && !isSnowflake(option.categoryId))
+          ) || optionKeys.size !== options.length) {
+            res.statusCode = 400;
+            res.end(JSON.stringify({ error: "Ticket options need unique keys, labels, and valid category IDs." }));
+            return;
+          }
+          const previous = ticketConfig.get(guildId) || {};
+          const savedTicket = {
+            ...previous,
+            panelMode: ticketInput.panelMode === "select" ? "select" : "buttons",
+            panelOptions: options,
+            panelEmbed: normalizeSupportEmbed(ticketInput.panelEmbed),
+            openedEmbed: normalizeSupportEmbed(ticketInput.openedEmbed),
+            closedEmbed: normalizeSupportEmbed(ticketInput.closedEmbed),
+          };
+          await upsertGuildSettings(guildId, {
+            ticket_support_category: savedTicket.supportCategoryId || null,
+            ticket_appeal_category: savedTicket.appealCategoryId || null,
+            ticket_partnership_category: savedTicket.partnershipCategoryId || null,
+            staff_role_id: savedTicket.staffRoleId || null,
+            ticket_log_channel: savedTicket.logChannelId || null,
+            ticket_ui_config: JSON.stringify({
+              panelMode: savedTicket.panelMode,
+              panelOptions: savedTicket.panelOptions,
+              panelEmbed: savedTicket.panelEmbed,
+              openedEmbed: savedTicket.openedEmbed,
+              closedEmbed: savedTicket.closedEmbed,
+            }),
+          });
+          ticketConfig.set(guildId, savedTicket);
+        }
+
+        if (modmailInput) {
+          const previous = modmailConfigs.get(guildId) || {};
+          const enabled = Boolean(modmailInput.enabled);
+          const categoryId = textValue(modmailInput.categoryId ?? previous.categoryId, 20).trim();
+          const logChannelId = textValue(modmailInput.logChannelId ?? previous.logChannelId, 20).trim();
+          const staffRoleId = textValue(modmailInput.staffRoleId ?? previous.staffRoleId, 20).trim();
+          if (enabled && (!isSnowflake(categoryId) || !isSnowflake(logChannelId) || !isSnowflake(staffRoleId))) {
+            res.statusCode = 400;
+            res.end(JSON.stringify({ error: "Enabled ModMail needs a valid category, log channel, and staff role ID." }));
+            return;
+          }
+          const categories = Array.isArray(modmailInput.categories)
+            ? modmailInput.categories.slice(0, 25).map((category) => ({
+              key: textValue(category.key, 50).trim().toLowerCase(),
+              label: textValue(category.label, 100).trim(),
+              description: textValue(category.description || category.label, 100).trim(),
+              emoji: textValue(category.emoji, 100).trim(),
+            }))
+            : previous.categories || [];
+          const categoryKeys = new Set(categories.map((category) => category.key));
+          if (!categories.length || categories.some((category) =>
+            !/^[a-z0-9_-]{1,50}$/.test(category.key)
+            || !category.label
+          ) || categoryKeys.size !== categories.length) {
+            res.statusCode = 400;
+            res.end(JSON.stringify({ error: "ModMail needs categories with unique keys and labels." }));
+            return;
+          }
+          const embedKeys = ["serverPicker", "topicPicker", "opened", "userMessage", "staffReply", "closed"];
+          const embeds = Object.fromEntries(embedKeys.map((key) => [
+            key,
+            normalizeSupportEmbed(modmailInput.embeds?.[key] || previous.embeds?.[key]),
+          ]));
+          const responseTimeoutMinutes = Math.max(1, Math.min(1440, Math.round(Number(modmailInput.responseTimeoutMinutes) || 15)));
+          if (enabled) {
+            const categoryChannel = await guild.channels.fetch(categoryId).catch(() => null);
+            const logChannel = await guild.channels.fetch(logChannelId).catch(() => null);
+            if (categoryChannel?.type !== ChannelType.GuildCategory
+              || !logChannel?.isTextBased?.()
+              || !guild.roles.cache.has(staffRoleId)) {
+              res.statusCode = 400;
+              res.end(JSON.stringify({ error: "The configured ModMail category, log channel, or staff role could not be found." }));
+              return;
+            }
+          }
+          const savedModmail = {
+            guildId,
+            categoryId,
+            logChannelId,
+            staffRoleId,
+            enabled,
+            categories,
+            embeds,
+            responseTimeoutMinutes,
+          };
+          await upsertModmailConfig(savedModmail);
+          modmailConfigs.set(guildId, savedModmail);
+        }
+
+        res.end(JSON.stringify({ success: true }));
+      } catch (error) {
+        console.error("Support configuration save failed:", error);
+        res.statusCode = 500;
+        res.end(JSON.stringify({ error: "The support settings could not be saved." }));
+      }
+      return;
+    }
+
+    if (url === "/api/support/panel") {
+      const { guildId, channelId } = body;
+      if (!guildId || !isSnowflake(channelId)) {
+        res.statusCode = 400;
+        res.end(JSON.stringify({ error: "guildId and a valid channelId are required" }));
+        return;
+      }
+      const guild = client.guilds.cache.get(guildId);
+      if (!guild) {
+        res.statusCode = 404;
+        res.end(JSON.stringify({ error: "Server not found" }));
+        return;
+      }
+      try {
+        const channel = await guild.channels.fetch(channelId).catch(() => null);
+        if (!channel?.isTextBased?.() || channel.guildId !== guildId) {
+          res.statusCode = 400;
+          res.end(JSON.stringify({ error: "Choose a text channel from the selected server." }));
+          return;
+        }
+        const message = await publishTicketPanel(channel);
+        res.end(JSON.stringify({ success: true, messageId: message.id }));
+      } catch (error) {
+        res.statusCode = 500;
+        res.end(JSON.stringify({ error: error.message || "The ticket panel could not be published." }));
+      }
+      return;
+    }
 
     if (url === "/api/send-embed") {
       const {

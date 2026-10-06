@@ -46,12 +46,25 @@ export async function getAllAfk() {
 
 // ─── ModMail ─────────────────────────────────────────────────────────────────
 export async function upsertModmailConfig(config) {
+  const uiConfig = config.uiConfig || {
+    categories: config.categories,
+    embeds: config.embeds,
+    responseTimeoutMinutes: config.responseTimeoutMinutes,
+  };
   await pool.query(
-    `INSERT INTO modmail_config (guild_id, category_id, log_channel_id, staff_role_id, enabled)
-     VALUES ($1,$2,$3,$4,$5)
+    `INSERT INTO modmail_config (guild_id, category_id, log_channel_id, staff_role_id, enabled, ui_config)
+     VALUES ($1,$2,$3,$4,$5,$6::jsonb)
      ON CONFLICT (guild_id) DO UPDATE SET
-       category_id=$2, log_channel_id=$3, staff_role_id=$4, enabled=$5, updated_at=NOW()`,
-    [config.guildId, config.categoryId, config.logChannelId, config.staffRoleId, config.enabled !== false],
+       category_id=$2, log_channel_id=$3, staff_role_id=$4, enabled=$5,
+       ui_config=$6::jsonb, updated_at=NOW()`,
+    [
+      config.guildId,
+      config.categoryId,
+      config.logChannelId,
+      config.staffRoleId,
+      config.enabled !== false,
+      JSON.stringify(uiConfig),
+    ],
   );
 }
 
@@ -86,8 +99,24 @@ export async function closeModmailTicket(channelId) {
   );
 }
 
+export async function setModmailTicketTranscript(channelId, transcriptChannelId, transcriptMessageId) {
+  await pool.query(
+    "UPDATE modmail_tickets SET transcript_channel_id=$2, transcript_message_id=$3 WHERE channel_id=$1",
+    [channelId, transcriptChannelId, transcriptMessageId],
+  );
+}
+
+export async function deleteModmailTicketDb(channelId) {
+  await pool.query("DELETE FROM modmail_tickets WHERE channel_id=$1", [channelId]);
+}
+
 export async function getOpenModmailTickets() {
   const result = await pool.query("SELECT * FROM modmail_tickets WHERE open=TRUE");
+  return result.rows;
+}
+
+export async function getAllModmailTickets() {
+  const result = await pool.query("SELECT * FROM modmail_tickets");
   return result.rows;
 }
 
@@ -129,11 +158,17 @@ export async function upsertTicket(ticket) {
 export async function closeTicketDb(ticketId) {
   await pool.query("UPDATE tickets SET open=false WHERE id=$1", [ticketId]);
 }
+export async function setTicketTranscript(ticketId, transcriptChannelId, transcriptMessageId) {
+  await pool.query(
+    "UPDATE tickets SET transcript_channel_id=$2, transcript_message_id=$3 WHERE id=$1",
+    [ticketId, transcriptChannelId, transcriptMessageId],
+  );
+}
 export async function deleteTicketDb(ticketId) {
   await pool.query("DELETE FROM tickets WHERE id=$1", [ticketId]);
 }
 export async function getAllTickets() {
-  const r = await pool.query("SELECT * FROM tickets WHERE open=true");
+  const r = await pool.query("SELECT * FROM tickets");
   return r.rows;
 }
 
@@ -493,8 +528,11 @@ export async function ensureTables() {
       log_channel_id VARCHAR(50) NOT NULL,
       staff_role_id VARCHAR(50) NOT NULL,
       enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      ui_config JSONB NOT NULL DEFAULT '{}'::jsonb,
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+    ALTER TABLE modmail_config
+      ADD COLUMN IF NOT EXISTS ui_config JSONB NOT NULL DEFAULT '{}'::jsonb;
     CREATE TABLE IF NOT EXISTS modmail_tickets (
       channel_id VARCHAR(50) PRIMARY KEY,
       guild_id VARCHAR(50) NOT NULL,
@@ -505,8 +543,29 @@ export async function ensureTables() {
       opened_at BIGINT NOT NULL,
       open BOOLEAN NOT NULL DEFAULT TRUE
     );
+    ALTER TABLE modmail_tickets
+      ADD COLUMN IF NOT EXISTS transcript_channel_id VARCHAR(50),
+      ADD COLUMN IF NOT EXISTS transcript_message_id VARCHAR(50);
     CREATE INDEX IF NOT EXISTS idx_modmail_tickets_user_open
       ON modmail_tickets (user_id, open);
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS tickets (
+      id VARCHAR(100) PRIMARY KEY,
+      channel_id VARCHAR(50) NOT NULL,
+      guild_id VARCHAR(50) NOT NULL,
+      user_id VARCHAR(50) NOT NULL,
+      type VARCHAR(100) NOT NULL,
+      reason TEXT,
+      open BOOLEAN NOT NULL DEFAULT TRUE,
+      opened_at BIGINT NOT NULL,
+      members TEXT NOT NULL DEFAULT '[]'
+    );
+    ALTER TABLE guild_settings
+      ADD COLUMN IF NOT EXISTS ticket_ui_config JSONB NOT NULL DEFAULT '{}'::jsonb;
+    ALTER TABLE tickets
+      ADD COLUMN IF NOT EXISTS transcript_channel_id VARCHAR(50),
+      ADD COLUMN IF NOT EXISTS transcript_message_id VARCHAR(50);
   `);
 
   console.log("\u2705 Auto-created activity, music, economy and giveaway tables; migration complete");
@@ -689,7 +748,7 @@ export async function hydrateStore(store) {
   const [afk, sticky, tix, giveaways, trigs, cds, settings, countingRows, allStarboards, allEntries, modmailConfigs, modmailTickets] = await Promise.all([
     getAllAfk(), getAllSticky(), getAllTickets(), getAllGiveaways(),
     getAllTriggers(), getAllCountdowns(), getAllGuildSettings(), getAllCountingConfigs(),
-    getAllStarboards(), getAllStarboardEntries(), getAllModmailConfigs(), getOpenModmailTickets(),
+    getAllStarboards(), getAllStarboardEntries(), getAllModmailConfigs(), getAllModmailTickets(),
   ]);
 
   for (const row of afk) {
@@ -713,6 +772,8 @@ export async function hydrateStore(store) {
       id: row.id, channelId: row.channel_id, guildId: row.guild_id,
       userId: row.user_id, type: row.type, reason: row.reason,
       open: row.open, openedAt: Number(row.opened_at), members: JSON.parse(row.members || "[]"),
+      transcriptChannelId: row.transcript_channel_id || null,
+      transcriptMessageId: row.transcript_message_id || null,
     });
   }
   for (const row of giveaways) {
@@ -794,12 +855,19 @@ export async function hydrateStore(store) {
       });
     }
 
+    let ticketUiConfig = {};
+    try {
+      ticketUiConfig = typeof row.ticket_ui_config === "string"
+        ? JSON.parse(row.ticket_ui_config || "{}")
+        : (row.ticket_ui_config || {});
+    } catch {}
     store.ticketConfig.set(row.guild_id, {
       supportCategoryId:     row.ticket_support_category,
       appealCategoryId:      row.ticket_appeal_category,
       partnershipCategoryId: row.ticket_partnership_category,
       staffRoleId:           row.staff_role_id,
       logChannelId:          row.ticket_log_channel,
+      ...ticketUiConfig,
     });
     store.loggingConfig.set(row.guild_id, {
       enabled:   row.logging_enabled,
@@ -808,12 +876,19 @@ export async function hydrateStore(store) {
     });
   }
   for (const row of modmailConfigs) {
+    let uiConfig = {};
+    try {
+      uiConfig = typeof row.ui_config === "string"
+        ? JSON.parse(row.ui_config || "{}")
+        : (row.ui_config || {});
+    } catch {}
     store.modmailConfigs.set(row.guild_id, {
       guildId: row.guild_id,
       categoryId: row.category_id,
       logChannelId: row.log_channel_id,
       staffRoleId: row.staff_role_id,
       enabled: row.enabled,
+      ...uiConfig,
     });
   }
   for (const row of modmailTickets) {
@@ -826,6 +901,8 @@ export async function hydrateStore(store) {
       categoryName: row.category_name,
       openedAt: Number(row.opened_at),
       open: row.open,
+      transcriptChannelId: row.transcript_channel_id || null,
+      transcriptMessageId: row.transcript_message_id || null,
     });
   }
 

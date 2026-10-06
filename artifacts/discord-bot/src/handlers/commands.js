@@ -16,6 +16,7 @@ import * as musichelpCmd     from "../commands/musichelp.js";
 import * as musicCmd         from "../commands/music.js";
 import * as afkCmd           from "../commands/afk.js";
 import * as ticketCmd        from "../commands/ticket.js";
+import * as deleteCmd        from "../commands/delete.js";
 import * as giveawayCmd      from "../commands/giveaway.js";
 import * as triggerCmd       from "../commands/trigger.js";
 import * as nilouCmd         from "../commands/nilou.js";
@@ -55,7 +56,7 @@ export function loadCommands(client) {
     embedCmd, timestampCmd, stickyCmd, purgeCmd, welcomeCmd,
     ghostpingCmd, reactionroleCmd, adminroleCmd, pingCmd, botinfoCmd,
     serverinfoCmd, countdownCmd, helpCmd, musichelpCmd, musicCmd,
-    afkCmd, ticketCmd, giveawayCmd, triggerCmd, nilouCmd,
+    afkCmd, ticketCmd, deleteCmd, giveawayCmd, triggerCmd, nilouCmd,
     registerCmd, aboutCmd, profileCmd, listCmd, buildCmd, cvCalcCmd,
     topArtifactsCmd, banCmd, kickCmd, timeoutCmd,
     roleCmd, echoCmd, emojihuntCmd,

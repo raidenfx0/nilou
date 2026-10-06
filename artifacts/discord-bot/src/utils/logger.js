@@ -14,6 +14,7 @@ const EVENT_LABELS = {
   kick:           "👢 Member Kicked",
   roleAdd:        "🏷️ Role Added",
   roleRemove:     "🏷️ Role Removed",
+  echo:           "📨 Anonymous Echo Sent",
 };
 
 export async function sendLog(guild, event, { title, description, fields = [], color } = {}) {

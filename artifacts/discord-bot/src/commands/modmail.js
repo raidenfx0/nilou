@@ -12,23 +12,126 @@ import {
 import { NILOU_RED, NILOU_RED_DARK, FOOTER_MAIN } from "../theme.js";
 import { isAdmin, denyAdmin } from "../utils/adminCheck.js";
 import { modmailConfigs, modmailTickets } from "../data/store.js";
+import { buildSupportEmbed } from "../utils/supportEmbeds.js";
 import {
   closeModmailTicket as closeModmailTicketDb,
   createModmailTicket,
   getAllModmailConfigs,
+  setModmailTicketTranscript,
   updateModmailTicketCategory,
   upsertModmailConfig,
 } from "../db/index.js";
 
 const MAX_OPEN_TICKETS_PER_USER = 1;
 const MAX_TRANSCRIPT_MESSAGES = 500;
-const CATEGORIES = [
+const DEFAULT_CATEGORIES = [
   { key: "support", label: "General Support", description: "Questions and general assistance", emoji: "💬" },
   { key: "report", label: "Report / Ban Appeal", description: "Reports, rule concerns, or appeals", emoji: "🛡️" },
   { key: "feedback", label: "Feedback & Suggestions", description: "Ideas and server feedback", emoji: "💡" },
   { key: "bug", label: "Bug Report", description: "Technical issues and bug reports", emoji: "🐛" },
 ];
 const pendingRequests = new Map();
+const pendingPrompts = new Map();
+const pendingReplies = new Map();
+const PROMPT_TIMEOUT_MS = 5 * 60_000;
+const DEFAULT_RESPONSE_TIMEOUT_MINUTES = 15;
+const EMBED_DEFAULTS = {
+  serverPicker: { title: "✦ Contact Server Support", description: "Choose the server you need help with. Your message will only be visible to that server’s staff.\n\nAfter selecting a server, choose a topic.", color: "#E84057", footer: FOOTER_MAIN.text },
+  topicPicker: { title: "✦ Choose a support topic", description: "Choose what you need help with.", color: "#E84057", footer: FOOTER_MAIN.text },
+  opened: { title: "✦ New ModMail Conversation", description: "A member has opened a private support conversation. Reply in this channel or use `/modmail reply`.", color: "#E84057", footer: FOOTER_MAIN.text },
+  userMessage: { title: "Message received", description: "{message}", color: "#2ECC71", footer: "Nilou ModMail" },
+  staffReply: { title: "Message from {staff}", description: "{message}", color: "#5865F2", footer: "Nilou ModMail" },
+  closed: { title: "✦ Support conversation closed", description: "Your ModMail conversation in **{server}** has been closed.\n\n**Reason:** {reason}", color: "#821F32", footer: FOOTER_MAIN.text },
+};
+
+function configCategories(config) {
+  const categories = config?.categories || config?.uiConfig?.categories;
+  return Array.isArray(categories) && categories.length
+    ? categories.filter((item) => item?.key && item?.label).slice(0, 25)
+    : DEFAULT_CATEGORIES;
+}
+
+function configEmbeds(config) {
+  return { ...EMBED_DEFAULTS, ...(config?.embeds || config?.uiConfig?.embeds || {}) };
+}
+
+export function getModmailDashboardConfig(guildId) {
+  const config = modmailConfigs.get(guildId);
+  if (!config) return null;
+  return {
+    enabled: config.enabled !== false,
+    categoryId: config.categoryId || "",
+    logChannelId: config.logChannelId || "",
+    staffRoleId: config.staffRoleId || "",
+    categories: configCategories(config),
+    embeds: configEmbeds(config),
+    responseTimeoutMinutes: Number(config.responseTimeoutMinutes || DEFAULT_RESPONSE_TIMEOUT_MINUTES),
+  };
+}
+
+function configuredEmbed(config, key, variables, fallback = {}) {
+  return buildSupportEmbed(configEmbeds(config)[key], variables, {
+    ...(EMBED_DEFAULTS[key] || {}),
+    ...fallback,
+  });
+}
+
+function clearPendingPrompt(userId) {
+  const current = pendingPrompts.get(userId);
+  if (current?.timer) clearTimeout(current.timer);
+  pendingPrompts.delete(userId);
+}
+
+function expirePrompt(userId, message, stage) {
+  clearPendingPrompt(userId);
+  const timer = setTimeout(async () => {
+    pendingPrompts.delete(userId);
+    pendingRequests.delete(userId);
+    await message.edit({
+      content: `Request timed out while waiting for you to ${stage}. Send Nilou another DM to begin again.`,
+      embeds: [],
+      components: [],
+    }).catch(() => {});
+  }, PROMPT_TIMEOUT_MS);
+  timer.unref?.();
+  pendingPrompts.set(userId, { message, timer });
+}
+
+function timeoutMinutes(config) {
+  const value = Number(config?.responseTimeoutMinutes || config?.uiConfig?.responseTimeoutMinutes || DEFAULT_RESPONSE_TIMEOUT_MINUTES);
+  return Number.isFinite(value) ? Math.min(1440, Math.max(1, Math.round(value))) : DEFAULT_RESPONSE_TIMEOUT_MINUTES;
+}
+
+async function clearReplyTimeout(ticket, resolution) {
+  const pending = pendingReplies.get(ticket.channelId);
+  if (!pending) return;
+  clearTimeout(pending.timer);
+  pendingReplies.delete(ticket.channelId);
+  await pending.message.edit({ content: resolution, embeds: [], components: [] }).catch(() => {});
+}
+
+function startReplyTimeout(ticket, config, acknowledgement) {
+  const old = pendingReplies.get(ticket.channelId);
+  if (old?.timer) {
+    clearTimeout(old.timer);
+    old.message.edit({
+      content: "A newer message was sent to the staff team; the reply reminder has restarted.",
+      embeds: [],
+      components: [],
+    }).catch(() => {});
+  }
+  const minutes = timeoutMinutes(config);
+  const timer = setTimeout(async () => {
+    pendingReplies.delete(ticket.channelId);
+    await acknowledgement.edit({
+      content: `Request timed out after ${minutes} minutes without a staff reply. Your ModMail ticket remains open; send another DM if you want to follow up.`,
+      embeds: [],
+      components: [],
+    }).catch(() => {});
+  }, minutes * 60_000);
+  timer.unref?.();
+  pendingReplies.set(ticket.channelId, { message: acknowledgement, timer });
+}
 
 export const data = new SlashCommandBuilder()
   .setName("modmail")
@@ -69,16 +172,16 @@ function configEmbed(guild, config) {
     .setTimestamp();
 }
 
-function categorySelect(guildId) {
+function categorySelect(guildId, config) {
   return new ActionRowBuilder().addComponents(
     new StringSelectMenuBuilder()
       .setCustomId(`modmail:category:${guildId}`)
       .setPlaceholder("Choose what you need help with")
-      .addOptions(CATEGORIES.map((category) => ({
+      .addOptions(configCategories(config).map((category) => ({
         label: category.label,
         value: category.key,
         description: category.description,
-        emoji: category.emoji,
+        ...(category.emoji ? { emoji: category.emoji } : {}),
       }))),
   );
 }
@@ -124,12 +227,13 @@ function messageText(message) {
   return [content, ...attachmentLines].filter(Boolean).join("\n").slice(0, 4000) || "(No text content)";
 }
 
-function embedMessage(title, text, color, author = null) {
-  const embed = new EmbedBuilder()
-    .setColor(color)
-    .setTitle(title)
-    .setDescription(text.slice(0, 4000))
-    .setTimestamp();
+function embedMessage(config, key, title, text, color, author = null, variables = {}) {
+  const embed = configuredEmbed(config, key, { ...variables, message: text }, {
+    title,
+    description: "{message}",
+    color: `#${Number(color).toString(16).padStart(6, "0")}`,
+    footer: "Nilou ModMail",
+  });
   if (author) embed.setAuthor(author);
   return embed;
 }
@@ -139,7 +243,20 @@ async function logModmail(client, ticket, title, description, color = NILOU_RED)
   if (!config?.logChannelId) return;
   const channel = await client.channels.fetch(config.logChannelId).catch(() => null);
   if (!channel?.isTextBased?.()) return;
-  const embed = embedMessage(title, description, color)
+  const embedKey = title.toLowerCase().includes("opened") ? "opened" : "closed";
+  const embed = configuredEmbed(config, embedKey, {
+    user: `<@${ticket.userId}>`,
+    "user.name": ticket.username,
+    "user.tag": ticket.username,
+    server: channel.guild?.name || "",
+    topic: ticket.categoryName,
+    category: ticket.categoryName,
+    channel: `<#${ticket.channelId}>`,
+    message: "",
+    reason: "",
+    staff: "",
+    closer: "",
+  }, { title, description, color: `#${Number(color).toString(16).padStart(6, "0")}` })
     .addFields(
       { name: "User", value: `<@${ticket.userId}> (\`${ticket.userId}\`)`, inline: true },
       { name: "Ticket", value: `<#${ticket.channelId}>`, inline: true },
@@ -164,16 +281,16 @@ async function accessibleModmailGuilds(client, userId) {
 
 async function sendServerPicker(message, guilds) {
   const clipped = guilds.length > 25;
-  const embed = new EmbedBuilder()
-    .setColor(NILOU_RED)
-    .setTitle("✦ Contact Server Support")
-    .setDescription(
-      "Choose the server you need help with. Your message will only be visible to that server’s staff.\n\n" +
-      (clipped ? "Showing the first 25 available servers. " : "") +
-      "After selecting a server, choose a topic.",
-    )
-    .setFooter(FOOTER_MAIN);
-  await message.channel.send({ embeds: [embed], components: [serverSelect(guilds)] });
+  const config = modmailConfigs.get(guilds[0]?.id);
+  const prompt = await message.channel.send({
+    embeds: [configuredEmbed(config, "serverPicker", {
+      servers: String(Math.min(guilds.length, 25)),
+      clipped: clipped ? "Showing the first 25 available servers. " : "",
+      user: `<@${message.author.id}>`,
+    })],
+    components: [serverSelect(guilds)],
+  });
+  return prompt;
 }
 
 async function startFromDm(message, client) {
@@ -190,7 +307,10 @@ async function startFromDm(message, client) {
   const pending = pendingRequests.get(message.author.id) || [];
   pending.push(request);
   pendingRequests.set(message.author.id, pending.slice(-10));
-  await sendServerPicker(message, guilds);
+  const existingPrompt = pendingPrompts.get(message.author.id);
+  if (existingPrompt) return;
+  const prompt = await sendServerPicker(message, guilds);
+  expirePrompt(message.author.id, prompt, "choose a server and topic");
 }
 
 async function createConversation(client, guild, member, category, initialMessages = []) {
@@ -260,17 +380,23 @@ async function createConversation(client, guild, member, category, initialMessag
   }
   modmailTickets.set(channel.id, ticket);
 
-  const intro = new EmbedBuilder()
-    .setColor(NILOU_RED)
-    .setTitle("✦ New ModMail Conversation")
-    .setDescription("A member has opened a private support conversation. Reply in this channel or use `/modmail reply`.")
+  const intro = configuredEmbed(config, "opened", {
+    user: `<@${member.id}>`,
+    "user.name": member.user.username,
+    "user.tag": member.user.tag || member.user.username,
+    server: guild.name,
+    topic: category.label,
+    category: category.label,
+    channel: `<#${channel.id}>`,
+    openedAt: `<t:${Math.floor(ticket.openedAt / 1000)}:F>`,
+  })
     .addFields(
       { name: "Member", value: `<@${member.id}> (\`${member.id}\`)`, inline: true },
       { name: "Category", value: category.label, inline: true },
       { name: "Opened", value: `<t:${Math.floor(ticket.openedAt / 1000)}:F>`, inline: true },
     )
     .setThumbnail(member.user.displayAvatarURL({ size: 128 }))
-    .setFooter(FOOTER_MAIN);
+    .setFooter({ text: configEmbeds(config).opened.footer || FOOTER_MAIN.text });
   await channel.send({
     content: `<@&${config.staffRoleId}>`,
     embeds: [intro],
@@ -281,13 +407,20 @@ async function createConversation(client, guild, member, category, initialMessag
 
   for (const initial of initialMessages) {
     await channel.send({
-      embeds: [embedMessage("Message received", initial.content, 0x2ecc71, {
+      embeds: [embedMessage(config, "userMessage", "Message received", initial.content, 0x2ecc71, {
         name: ticket.username,
         iconURL: member.user.displayAvatarURL({ size: 64 }),
+      }, {
+        user: `<@${member.id}>`,
+        "user.name": member.user.username,
+        "user.tag": member.user.tag || member.user.username,
+        server: guild.name,
+        topic: category.label,
+        category: category.label,
+        channel: `<#${channel.id}>`,
       })],
       allowedMentions: { parse: [] },
     });
-    await logModmail(client, ticket, "Message received", initial.content, 0x2ecc71);
   }
   return { channel, ticket, existing: false };
 }
@@ -295,13 +428,27 @@ async function createConversation(client, guild, member, category, initialMessag
 async function relayStaffReply(client, ticket, content, staffUser, anonymous = false, recordInTicket = false) {
   const user = await client.users.fetch(ticket.userId).catch(() => null);
   if (!user) throw new Error("The user could not be found.");
+  const config = modmailConfigs.get(ticket.guildId);
+  const staffName = anonymous ? "Server Support Team" : (staffUser.tag || staffUser.username);
   const embed = embedMessage(
+    config,
+    "staffReply",
     anonymous ? "Message from server staff" : `Message from ${staffUser.username}`,
     content,
     0x5865f2,
     anonymous ? { name: "Server Support Team" } : {
       name: staffUser.tag || staffUser.username,
       iconURL: staffUser.displayAvatarURL({ size: 64 }),
+    },
+    {
+      user: `<@${ticket.userId}>`,
+      "user.name": ticket.username,
+      "user.tag": ticket.username,
+      server: (await client.guilds.fetch(ticket.guildId).catch(() => null))?.name || "",
+      topic: ticket.categoryName,
+      category: ticket.categoryName,
+      channel: `<#${ticket.channelId}>`,
+      staff: staffName,
     },
   );
   await user.send({ embeds: [embed], allowedMentions: { parse: [] } });
@@ -310,15 +457,19 @@ async function relayStaffReply(client, ticket, content, staffUser, anonymous = f
     if (ticketChannel?.isTextBased?.()) {
       await ticketChannel.send({
         embeds: [embedMessage(
+          config,
+          "staffReply",
           anonymous ? "Anonymous staff reply sent" : `Reply sent by ${staffUser.username}`,
           content,
           0x5865f2,
+          null,
+          { staff: staffName, topic: ticket.categoryName, channel: `<#${ticket.channelId}>` },
         )],
         allowedMentions: { parse: [] },
       }).catch(() => {});
     }
   }
-  await logModmail(client, ticket, anonymous ? "Anonymous reply sent" : "Staff reply sent", content, 0x5865f2);
+  await clearReplyTimeout(ticket, "A staff reply was delivered to your ModMail conversation.");
 }
 
 async function makeTranscript(channel) {
@@ -348,49 +499,82 @@ export async function closeConversation(client, channel, closedBy, reason = "No 
   const transcript = await makeTranscript(channel);
   await closeModmailTicketDb(ticket.channelId);
   ticket.open = false;
-  await logModmail(client, ticket, "ModMail closed", `**Closed by:** ${closedBy.tag || closedBy.username}\n**Reason:** ${reason}`, NILOU_RED_DARK);
+  ticket.closedAt = Date.now();
+  modmailTickets.set(ticket.channelId, ticket);
+  await clearReplyTimeout(ticket, "This ModMail conversation was closed by the staff team.");
 
   const config = modmailConfigs.get(ticket.guildId);
+  await channel.permissionOverwrites.edit(config?.staffRoleId, { SendMessages: false }).catch(() => {});
+  await channel.setTopic(`Closed ModMail | User ID: ${ticket.userId} | Category: ${ticket.categoryName}`).catch(() => {});
   const logChannel = config?.logChannelId
     ? await client.channels.fetch(config.logChannelId).catch(() => null)
     : null;
   if (logChannel?.isTextBased?.()) {
-    const closeEmbed = new EmbedBuilder()
-      .setColor(NILOU_RED_DARK)
-      .setTitle("✦ ModMail Transcript")
-      .setDescription(`Conversation with <@${ticket.userId}> has been closed.`)
+    const closeEmbed = configuredEmbed(config, "closed", {
+      user: `<@${ticket.userId}>`,
+      "user.name": ticket.username,
+      "user.tag": ticket.username,
+      server: channel.guild.name,
+      topic: ticket.categoryName,
+      category: ticket.categoryName,
+      channel: `<#${ticket.channelId}>`,
+      staff: closedBy.tag || closedBy.username,
+      closer: closedBy.tag || closedBy.username,
+      reason: "",
+      message: "",
+    }, {
+      title: "✦ ModMail Transcript",
+      description: "Conversation with {user} has been closed by {closer}. The transcript is attached.",
+      color: "#821F32",
+    })
       .addFields(
         { name: "Member", value: `${ticket.username} (\`${ticket.userId}\`)`, inline: true },
         { name: "Closed by", value: closedBy.tag || closedBy.username, inline: true },
         { name: "Category", value: ticket.categoryName, inline: true },
-        { name: "Reason", value: String(reason).slice(0, 1024), inline: false },
       )
-      .setFooter(FOOTER_MAIN)
-      .setTimestamp();
+      .setFooter({ text: configEmbeds(config).closed.footer || FOOTER_MAIN.text });
     const file = new AttachmentBuilder(Buffer.from(transcript, "utf8"), {
       name: `modmail-${ticket.userId}-${Date.now()}.txt`,
     });
-    await logChannel.send({ embeds: [closeEmbed], files: [file], allowedMentions: { parse: [] } }).catch(() => {});
+    const transcriptMessage = await logChannel.send({
+      embeds: [closeEmbed],
+      files: [file],
+      allowedMentions: { parse: [] },
+    }).catch(() => null);
+    if (transcriptMessage) {
+      ticket.transcriptChannelId = logChannel.id;
+      ticket.transcriptMessageId = transcriptMessage.id;
+      await setModmailTicketTranscript(ticket.channelId, logChannel.id, transcriptMessage.id).catch((error) => {
+        console.error("Could not save ModMail transcript reference:", error.message);
+      });
+    }
   }
 
   const user = await client.users.fetch(ticket.userId).catch(() => null);
   await user?.send({
-    embeds: [new EmbedBuilder()
-      .setColor(NILOU_RED_DARK)
-      .setTitle("✦ Support conversation closed")
-      .setDescription(`Your ModMail conversation in **${channel.guild.name}** has been closed.\n\n**Reason:** ${String(reason).slice(0, 900)}`)
-      .setFooter(FOOTER_MAIN)
-      .setTimestamp()],
+    embeds: [configuredEmbed(config, "closed", {
+      user: `<@${ticket.userId}>`,
+      "user.name": ticket.username,
+      "user.tag": ticket.username,
+      server: channel.guild.name,
+      topic: ticket.categoryName,
+      category: ticket.categoryName,
+      channel: `<#${ticket.channelId}>`,
+      staff: closedBy.tag || closedBy.username,
+      closer: closedBy.tag || closedBy.username,
+      reason: String(reason).slice(0, 900),
+      message: "",
+    })],
   }).catch(() => {});
 
-  setTimeout(() => channel.delete("ModMail conversation closed").catch(() => {}), 5000);
   return ticket;
 }
 
 function canManageConversation(member, config) {
   if (!member) return false;
   if (member.permissions?.has(PermissionFlagsBits.Administrator)
-      || member.permissions?.has(PermissionFlagsBits.ManageChannels)) return true;
+      || member.permissions?.has(PermissionFlagsBits.ManageChannels)
+      || member.permissions?.has(PermissionFlagsBits.ManageGuild)) return true;
   return Boolean(config?.staffRoleId && member.roles?.cache?.has(config.staffRoleId));
 }
 
@@ -421,6 +605,7 @@ export async function execute(interaction) {
     const logChannel = interaction.options.getChannel("log_channel");
     const staffRole = interaction.options.getRole("staff_role");
     const config = {
+      ...(modmailConfigs.get(interaction.guildId) || {}),
       guildId: interaction.guildId,
       categoryId: category.id,
       logChannelId: logChannel.id,
@@ -481,17 +666,23 @@ export async function handleModmailSelect(interaction) {
     const config = modmailConfigs.get(guildId);
     const member = guild ? await guild.members.fetch(interaction.user.id).catch(() => null) : null;
     if (!guild || !member || !config?.enabled) {
+      clearPendingPrompt(interaction.user.id);
       return interaction.update({
         content: "That server is no longer available for ModMail. Send me another message to try again.",
         embeds: [],
         components: [],
       });
     }
-    return interaction.update({
-      content: `You selected **${guild.name}**. Choose the topic for your request:`,
-      embeds: [],
-      components: [categorySelect(guildId)],
+    await interaction.update({
+      content: "",
+      embeds: [configuredEmbed(config, "topicPicker", {
+        server: guild.name,
+        user: `<@${interaction.user.id}>`,
+      })],
+      components: [categorySelect(guildId, config)],
     });
+    expirePrompt(interaction.user.id, interaction.message, "choose a topic");
+    return;
   }
 
   if (!interaction.customId.startsWith("modmail:category:")) return;
@@ -499,8 +690,9 @@ export async function handleModmailSelect(interaction) {
   const guild = interaction.client.guilds.cache.get(guildId);
   const config = modmailConfigs.get(guildId);
   const member = guild ? await guild.members.fetch(interaction.user.id).catch(() => null) : null;
-  const category = CATEGORIES.find((item) => item.key === interaction.values[0]);
+  const category = configCategories(config).find((item) => item.key === interaction.values[0]);
   if (!guild || !member || !config?.enabled || !category) {
+    clearPendingPrompt(interaction.user.id);
     return interaction.update({
       content: "I could not complete that request. Send me another message to start again.",
       embeds: [],
@@ -513,14 +705,19 @@ export async function handleModmailSelect(interaction) {
     const pending = pendingRequests.get(interaction.user.id) || [];
     const result = await createConversation(interaction.client, guild, member, category, pending);
     pendingRequests.delete(interaction.user.id);
-    await interaction.editReply({
+    clearPendingPrompt(interaction.user.id);
+    const confirmation = await interaction.editReply({
       content: result.existing
         ? `You already have an open conversation in **${guild.name}**: ${result.channel}. Send your next message here and I’ll pass it along.`
         : `Your private conversation with **${guild.name}** is open. Reply here in this DM to continue.`,
       embeds: [],
       components: [],
     });
+    if (pending.length && confirmation?.edit) {
+      startReplyTimeout(result.ticket, config, confirmation);
+    }
   } catch (error) {
+    clearPendingPrompt(interaction.user.id);
     await interaction.editReply({
       content: `I couldn't open the conversation: ${error.message}`,
       embeds: [],
@@ -568,10 +765,10 @@ async function handleStaffMessage(message, ticket) {
         .then(() => message.react("✅").catch(() => {}))
         .catch(() => message.reply("I couldn't DM the user. They may have DMs disabled.").catch(() => {}));
     } else if (categoryMatch) {
-      const nextCategory = CATEGORIES.find((item) => item.key === categoryMatch[1].toLowerCase()
+      const nextCategory = configCategories(config).find((item) => item.key === categoryMatch[1].toLowerCase()
         || item.label.toLowerCase() === categoryMatch[1].toLowerCase());
       if (!nextCategory) {
-        return message.reply(`Choose a category: ${CATEGORIES.map((item) => `\`${item.key}\``).join(", ")}.`).catch(() => {});
+        return message.reply(`Choose a category: ${configCategories(config).map((item) => `\`${item.key}\``).join(", ")}.`).catch(() => {});
       }
       await updateModmailTicketCategory(ticket.channelId, nextCategory.key, nextCategory.label);
       ticket.categoryKey = nextCategory.key;
@@ -614,7 +811,7 @@ export async function handleModmailMessage(message) {
   if (!channel) {
     active.open = false;
     await closeModmailTicketDb(active.channelId).catch(() => {});
-    modmailTickets.delete(active.channelId);
+    modmailTickets.set(active.channelId, active);
     await message.channel.send("Your previous support conversation is no longer available. I’ll help you open a new one.");
     await startFromDm(message, message.client);
     return true;
@@ -622,13 +819,21 @@ export async function handleModmailMessage(message) {
 
   const text = messageText(message);
   await channel.send({
-    content: config?.staffRoleId ? `<@&${config.staffRoleId}>` : undefined,
-    embeds: [embedMessage("Message received", text, 0x2ecc71, {
+    embeds: [embedMessage(config, "userMessage", "Message received", text, 0x2ecc71, {
       name: active.username,
       iconURL: message.author.displayAvatarURL({ size: 64 }),
+    }, {
+      user: `<@${active.userId}>`,
+      "user.name": active.username,
+      "user.tag": active.username,
+      server: guild.name,
+      topic: active.categoryName,
+      category: active.categoryName,
+      channel: `<#${active.channelId}>`,
     })],
-    allowedMentions: { roles: config?.staffRoleId ? [config.staffRoleId] : [] },
+    allowedMentions: { parse: [] },
   });
-  await logModmail(message.client, active, "Message received", text, 0x2ecc71);
+  const acknowledgement = await message.channel.send("Your message was sent to the staff team. I’ll update this note if it is not answered in time.");
+  startReplyTimeout(active, config, acknowledgement);
   return true;
 }

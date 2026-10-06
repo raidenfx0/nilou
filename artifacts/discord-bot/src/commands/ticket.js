@@ -6,15 +6,146 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  StringSelectMenuBuilder,
+  AttachmentBuilder,
 } from "discord.js";
 import { NILOU_RED, FOOTER_MAIN, DIVIDER } from "../theme.js";
 import { tickets, ticketConfig } from "../data/store.js";
 import { isAdmin, denyAdmin } from "../utils/adminCheck.js";
-import { upsertTicket, closeTicketDb, deleteTicketDb, upsertGuildSettings } from "../db/index.js";
-import { sendLog } from "../utils/logger.js";
+import {
+  upsertTicket,
+  closeTicketDb,
+  setTicketTranscript,
+  upsertGuildSettings,
+} from "../db/index.js";
+import { buildSupportEmbed } from "../utils/supportEmbeds.js";
 
 // ABSOLUTE LOCK: Prevents a user from starting any ticket process while one is active.
 const creationLock = new Set();
+const DEFAULT_PANEL_OPTIONS = [
+  { key: "support", label: "Support", description: "Get help from the staff team", emoji: "🎫", categoryField: "supportCategoryId", style: "primary" },
+  { key: "appeal", label: "Appeal", description: "Appeal a moderation decision", emoji: "⚖️", categoryField: "appealCategoryId", style: "secondary" },
+  { key: "partnership", label: "Partnership", description: "Discuss a partnership", emoji: "🤝", categoryField: "partnershipCategoryId", style: "success" },
+];
+
+function ticketPanelOptions(config = {}) {
+  if (Array.isArray(config.panelOptions) && config.panelOptions.length) {
+    return config.panelOptions;
+  }
+  return DEFAULT_PANEL_OPTIONS.map(({ categoryField, ...option }) => ({
+    ...option,
+    categoryId: config[categoryField] || "",
+  }));
+}
+
+function findTicketOption(config, type) {
+  const value = String(type || "").toLowerCase();
+  return ticketPanelOptions(config).find((option) =>
+    String(option.key || "").toLowerCase() === value ||
+    String(option.label || "").toLowerCase() === value
+  ) || null;
+}
+
+function optionStyle(style) {
+  return ({
+    primary: ButtonStyle.Primary,
+    secondary: ButtonStyle.Secondary,
+    success: ButtonStyle.Success,
+    danger: ButtonStyle.Danger,
+  })[style] || ButtonStyle.Primary;
+}
+
+export function canManageTicket(member, guildId, ticket) {
+  if (!member) return false;
+  if (ticket?.userId === member.id) return true;
+  if (isAdmin(member)
+      || member.permissions?.has(PermissionFlagsBits.Administrator)
+      || member.permissions?.has(PermissionFlagsBits.ManageGuild)
+      || member.permissions?.has(PermissionFlagsBits.ManageChannels)) return true;
+  const staffRoleId = ticketConfig.get(guildId)?.staffRoleId;
+  return Boolean(staffRoleId && member.roles?.cache?.has(staffRoleId));
+}
+
+export function getTicketDashboardConfig(guildId) {
+  const config = ticketConfig.get(guildId) || {};
+  return {
+    panelMode: config.panelMode === "select" ? "select" : "buttons",
+    panelOptions: ticketPanelOptions(config).map(({ categoryField, ...option }) => ({
+      key: option.key,
+      label: option.label,
+      description: option.description || "",
+      emoji: option.emoji || "",
+      categoryId: option.categoryId || "",
+      style: option.style || "primary",
+    })),
+    panelEmbed: config.panelEmbed || {
+      title: "✦ Create a Ticket",
+      description: `${DIVIDER}\nChoose a topic to open a private ticket.\n${DIVIDER}`,
+      color: "#E84057",
+      footer: FOOTER_MAIN.text,
+      imageUrl: "",
+      thumbnailUrl: "",
+    },
+    openedEmbed: config.openedEmbed || {
+      title: "✦ {type} Ticket",
+      description: `${DIVIDER}\nHello {user}!\nReason: **{reason}**\n\nStaff will assist you shortly.\n${DIVIDER}`,
+      color: "#E84057",
+      footer: FOOTER_MAIN.text,
+      imageUrl: "",
+      thumbnailUrl: "",
+    },
+    closedEmbed: config.closedEmbed || {
+      title: "Ticket closed",
+      description: "This ticket is now closed. The channel and transcript are retained; use `/delete` when you are ready to remove it.",
+      color: "#E84057",
+      footer: FOOTER_MAIN.text,
+      imageUrl: "",
+      thumbnailUrl: "",
+    },
+  };
+}
+
+export async function publishTicketPanel(target) {
+  const config = ticketConfig.get(target.guild.id) || {};
+  const settings = getTicketDashboardConfig(target.guild.id);
+  const embed = buildSupportEmbed(settings.panelEmbed, { server: target.guild.name }, {
+    title: "✦ Create a Ticket",
+    description: `${DIVIDER}\nChoose a topic to open a private ticket.\n${DIVIDER}`,
+    color: "#E84057",
+    footer: FOOTER_MAIN.text,
+  });
+  const options = ticketPanelOptions(config).filter((option) => option.key && option.label);
+  let components = [];
+  if (settings.panelMode === "select") {
+    const menu = new StringSelectMenuBuilder()
+      .setCustomId("ticket:select")
+      .setPlaceholder("Choose a ticket topic")
+      .addOptions(options.slice(0, 25).map((option) => ({
+        label: String(option.label).slice(0, 100),
+        value: String(option.key).slice(0, 100),
+        description: String(option.description || option.label).slice(0, 100),
+        ...(option.emoji ? { emoji: option.emoji } : {}),
+      })));
+    components = [new ActionRowBuilder().addComponents(menu)];
+  } else {
+    const rows = [];
+    for (let index = 0; index < Math.min(options.length, 25); index += 5) {
+      const row = new ActionRowBuilder();
+      for (const option of options.slice(index, index + 5)) {
+        const button = new ButtonBuilder()
+          .setCustomId(`ticket:open:${option.key}`)
+          .setLabel(String(option.label).slice(0, 80))
+          .setStyle(optionStyle(option.style));
+        if (option.emoji) button.setEmoji(option.emoji);
+        row.addComponents(button);
+      }
+      rows.push(row);
+    }
+    components = rows;
+  }
+  if (!components.length) throw new Error("Add at least one ticket option before publishing the panel.");
+  return target.send({ embeds: [embed], components });
+}
 
 // --- SLASH COMMAND DEFINITION ---
 export const data = new SlashCommandBuilder()
@@ -45,12 +176,7 @@ export const data = new SlashCommandBuilder()
       .addStringOption((o) =>
         o.setName("type")
           .setDescription("Select the type of ticket")
-          .setRequired(true) 
-          .addChoices(
-            { name: "Support", value: "Support" },
-            { name: "Appeal", value: "Appeal" },
-            { name: "Partnership", value: "Partnership" }
-          )
+           .setRequired(true)
       )
       .addStringOption((o) => o.setName("reason").setDescription("Reason for opening").setRequired(false))
   )
@@ -111,6 +237,13 @@ export async function execute(interaction) {
       ticket_partnership_category: existing.partnershipCategoryId || null,
       staff_role_id:               existing.staffRoleId           || null,
       ticket_log_channel:          existing.logChannelId          || null,
+      ticket_ui_config: JSON.stringify({
+        panelMode: existing.panelMode,
+        panelOptions: existing.panelOptions,
+        panelEmbed: existing.panelEmbed,
+        openedEmbed: existing.openedEmbed,
+        closedEmbed: existing.closedEmbed,
+      }),
     });
 
     const setupEmbed = new EmbedBuilder()
@@ -130,19 +263,12 @@ export async function execute(interaction) {
   if (sub === "panel") {
     if (!isAdmin(interaction.member)) return denyAdmin(interaction);
     const target = interaction.options.getChannel("channel");
-    const embed = new EmbedBuilder()
-      .setColor(NILOU_RED)
-      .setTitle("✦ Create a Ticket")
-      .setDescription(`${DIVIDER}\n🌸 Click a button to open a private ticket.\n\n🎫 **Support**\n⚖️ **Appeal**\n🤝 **Partnership**\n${DIVIDER}`)
-      .setFooter(FOOTER_MAIN);
-
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId("btn_support").setLabel("Support").setStyle(ButtonStyle.Primary).setEmoji("🎫"),
-      new ButtonBuilder().setCustomId("btn_appeal").setLabel("Appeal").setStyle(ButtonStyle.Secondary).setEmoji("⚖️"),
-      new ButtonBuilder().setCustomId("btn_partnership").setLabel("Partnership").setStyle(ButtonStyle.Success).setEmoji("🤝")
-    );
-    await target.send({ embeds: [embed], components: [row] });
-    return interaction.reply({ content: "🌸 Panel successfully deployed!", ephemeral: true });
+    try {
+      await publishTicketPanel(target);
+      return interaction.reply({ content: "Ticket panel published.", ephemeral: true });
+    } catch (error) {
+      return interaction.reply({ content: `Could not publish the panel: ${error.message}`, ephemeral: true });
+    }
   }
 
   if (sub === "open") {
@@ -164,10 +290,15 @@ export async function execute(interaction) {
     }
 
     if (ticket && ticket.userId !== interaction.user.id && !isAdmin(interaction.member)) {
-      return interaction.reply({ content: "❌ You cannot close this ticket.", ephemeral: true });
+      if (!canManageTicket(interaction.member, interaction.guildId, ticket)) {
+        return interaction.reply({ content: "❌ You cannot close this ticket.", ephemeral: true });
+      }
+    }
+    if (ticket && !ticket.open) {
+      return interaction.reply({ content: "This ticket is already closed. Use `/delete` to remove it.", ephemeral: true });
     }
 
-    await interaction.reply({ embeds: [closeEmbed(interaction.user)] });
+    await interaction.reply({ embeds: [closeEmbed(interaction.user, ticket, ticketConfig.get(interaction.guildId))] });
     return closeTicket(interaction.channel, ticket || { type: "Unknown", userId: "0" }, ticketId, interaction.user, interaction.guild);
   }
 
@@ -199,33 +330,35 @@ export async function openTicket({ guild, user, type, reason }) {
 
   try {
     const config = ticketConfig.get(guild.id) || {};
+    const selectedOption = findTicketOption(config, type);
+    if (!selectedOption) {
+      return { error: `That ticket type is not available. Choose one of the configured panel options.` };
+    }
+    const ticketType = selectedOption.label;
 
     // Check if user already has an open ticket of this type
-    const existing = [...tickets.values()].find(t => t.userId === userId && t.guildId === guild.id && t.open && t.type === type);
+    const existing = [...tickets.values()].find(t => t.userId === userId && t.guildId === guild.id && t.open && t.type === ticketType);
     if (existing) {
-      return { error: `You already have an open **${type}** ticket!` };
+      return { error: `You already have an open **${ticketType}** ticket!` };
     }
 
-    // Determine the correct category ID
-    let categoryId = null;
-    if (type === "Support") categoryId = config.supportCategoryId;
-    if (type === "Appeal") categoryId = config.appealCategoryId;
-    if (type === "Partnership") categoryId = config.partnershipCategoryId;
+    const categoryId = selectedOption.categoryId;
 
     // Block creation if category isn't set
     if (!categoryId) {
-      return { error: `The category for **${type}** tickets has not been set up yet.` };
+      return { error: `The category for **${ticketType}** tickets has not been set up yet.` };
     }
 
     // Explicitly fetch category to ensure it exists and we can see it
     const category = await guild.channels.fetch(categoryId).catch(() => null);
     if (!category || category.type !== ChannelType.GuildCategory) {
-      return { error: `The category ID provided for **${type}** is invalid. Please update it in \`/ticket setup\`.` };
+      return { error: `The category ID provided for **${ticketType}** is invalid. Update the ticket settings in the dashboard.` };
     }
 
+    const slug = ticketType.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").slice(0, 25) || "ticket";
     // Create the ticket channel strictly inside the parent category
     const channel = await guild.channels.create({
-      name: `${type.toLowerCase()}-${user.username.slice(0, 15)}`,
+      name: `${slug}-${user.username.slice(0, 15).toLowerCase().replace(/[^a-z0-9-]/g, "-")}`,
       type: ChannelType.GuildText,
       parent: category.id, 
       permissionOverwrites: [
@@ -234,31 +367,64 @@ export async function openTicket({ guild, user, type, reason }) {
         { id: guild.client.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageChannels] },
         ...(config.staffRoleId ? [{ id: config.staffRoleId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] }] : [])
       ],
-      topic: `${type} Ticket | User: ${user.tag}`
+      topic: `${ticketType} Ticket | User: ${user.tag}`,
     });
 
     // Save to memory + DB
     const ticketData = {
       id: `${guild.id}:${channel.id}`,
       channelId: channel.id, guildId: guild.id,
-      userId, type, reason, open: true,
+      userId, type: ticketType, reason, open: true,
       openedAt: Date.now(), members: [],
     };
     tickets.set(`${guild.id}:${channel.id}`, ticketData);
     await upsertTicket(ticketData);
 
-    const embed = new EmbedBuilder()
-      .setColor(NILOU_RED)
-      .setTitle(`✦ ${type} Ticket`)
-      .setDescription(`${DIVIDER}\n🌸 Hello ${user}!\nReason: **${reason}**\n\nStaff will assist you shortly.\n${DIVIDER}`)
-      .setFooter(FOOTER_MAIN);
+    const variables = {
+      user: `<@${userId}>`,
+      "user.name": user.username,
+      "user.tag": user.tag || user.username,
+      server: guild.name,
+      type: ticketType,
+      reason,
+      channel: `<#${channel.id}>`,
+      staff: config.staffRoleId ? `<@&${config.staffRoleId}>` : "staff",
+    };
+    const settings = getTicketDashboardConfig(guild.id);
+    const embed = buildSupportEmbed(settings.openedEmbed, variables, {
+      title: `✦ ${ticketType} Ticket`,
+      description: `${DIVIDER}\nHello {user}!\nReason: **{reason}**\n\nStaff will assist you shortly.\n${DIVIDER}`,
+      color: "#E84057",
+      footer: FOOTER_MAIN.text,
+    });
 
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId("close_ticket").setLabel("Close").setStyle(ButtonStyle.Danger).setEmoji("🔒")
     );
 
-    const ping = config.staffRoleId ? `<@&${config.staffRoleId}> ${user}` : `${user}`;
-    await channel.send({ content: ping, embeds: [embed], components: [row] });
+    const ping = config.staffRoleId ? `<@&${config.staffRoleId}> <@${userId}>` : `<@${userId}>`;
+    await channel.send({
+      content: ping,
+      embeds: [embed],
+      components: [row],
+      allowedMentions: {
+        roles: config.staffRoleId ? [config.staffRoleId] : [],
+        users: [userId],
+      },
+    });
+
+    if (config.logChannelId) {
+      const logChannel = await guild.channels.fetch(config.logChannelId).catch(() => null);
+      if (logChannel?.isTextBased?.()) {
+        const logEmbed = buildSupportEmbed(settings.openedEmbed, { ...variables, reason: "" }, {
+          title: "Ticket opened",
+          description: "{user} opened a {type} ticket in {channel}.",
+          color: "#E84057",
+          footer: FOOTER_MAIN.text,
+        });
+        await logChannel.send({ embeds: [logEmbed], allowedMentions: { parse: [] } }).catch(() => {});
+      }
+    }
 
     return { channel };
   } catch (err) {
@@ -270,50 +436,89 @@ export async function openTicket({ guild, user, type, reason }) {
   }
 }
 
-export async function closeTicket(channel, ticket, ticketId, user, guild) {
-  try {
-    if (tickets.has(ticketId)) {
-      const data = tickets.get(ticketId);
-      data.open = false;
-      tickets.set(ticketId, data);
-    }
-    await closeTicketDb(ticketId);
-
-    await sendLog(guild, "ticket", {
-      title: "🎟️ Ticket Closed",
-      description:
-        `**User:** <@${ticket.userId}>\n` +
-        `**Type:** ${ticket.type}\n` +
-        `**Closed By:** ${user.tag}`,
-    });
-
-    const config = ticketConfig.get(guild.id) || {};
-    if (config.logChannelId) {
-      const logCh = await guild.channels.fetch(config.logChannelId).catch(() => null);
-      if (logCh) {
-        const log = new EmbedBuilder()
-          .setColor(NILOU_RED)
-          .setTitle("✦ Ticket Closed")
-          .setDescription(`**User:** <@${ticket.userId}>\n**Type:** ${ticket.type}\n**Closed By:** ${user}`)
-          .setTimestamp();
-        logCh.send({ embeds: [log] }).catch(() => {});
-      }
-    }
-
-    setTimeout(async () => {
-      try {
-        await channel.delete();
-        tickets.delete(ticketId);
-        await deleteTicketDb(ticketId);
-      } catch {}
-    }, 5000);
-  } catch {}
+async function ticketTranscript(channel) {
+  const messages = [];
+  let before;
+  for (let page = 0; page < 5; page += 1) {
+    const batch = await channel.messages.fetch({ limit: 100, ...(before ? { before } : {}) }).catch(() => null);
+    if (!batch?.size) break;
+    messages.push(...batch.values());
+    before = batch.last()?.id;
+    if (batch.size < 100) break;
+  }
+  messages.sort((a, b) => a.createdTimestamp - b.createdTimestamp);
+  const lines = messages.map((message) => {
+    const time = new Date(message.createdTimestamp).toISOString();
+    const content = message.content || message.embeds?.map((embed) => embed.description).filter(Boolean).join(" ") || "";
+    const files = [...(message.attachments?.values?.() || [])]
+      .map((file) => `[Attachment: ${file.name || "file"}] ${file.url}`)
+      .join(" ");
+    return `[${time}] ${message.author?.tag || "Unknown"} (${message.author?.id || "?"}): ${[content, files].filter(Boolean).join(" ")}`;
+  });
+  return lines.join("\n").slice(0, 2_000_000) || "No messages were recorded.";
 }
 
-export function closeEmbed(user) {
-  return new EmbedBuilder()
-    .setColor(NILOU_RED)
-    .setTitle("✦ Closing Ticket")
-    .setDescription(`${DIVIDER}\n🌸 This channel will be deleted in **5 seconds**.\nInitiated by: ${user}\n${DIVIDER}`)
-    .setFooter(FOOTER_MAIN);
+export async function closeTicket(channel, ticket, ticketId, user, guild) {
+  try {
+    const data = tickets.get(ticketId) || ticket;
+    if (!data.open) return;
+    data.open = false;
+    data.closedAt = Date.now();
+    tickets.set(ticketId, data);
+    await closeTicketDb(ticketId);
+    const config = ticketConfig.get(guild.id) || {};
+    await channel.permissionOverwrites.edit(data.userId, { SendMessages: false }).catch(() => {});
+    if (config.staffRoleId) {
+      await channel.permissionOverwrites.edit(config.staffRoleId, { SendMessages: false }).catch(() => {});
+    }
+    const settings = getTicketDashboardConfig(guild.id);
+    const variables = {
+      user: `<@${data.userId}>`,
+      "user.name": "",
+      "user.tag": "",
+      server: guild.name,
+      type: data.type,
+      reason: "",
+      channel: `<#${channel.id}>`,
+      staff: user.tag || user.username,
+      closer: user.tag || user.username,
+    };
+    if (config.logChannelId) {
+      const logChannel = await guild.channels.fetch(config.logChannelId).catch(() => null);
+      if (logChannel?.isTextBased?.()) {
+        const transcript = await ticketTranscript(channel);
+        const embed = buildSupportEmbed(settings.closedEmbed, variables, {
+          title: "Ticket closed",
+          description: "{user}'s {type} ticket was closed by {closer}. The transcript is attached.",
+          color: "#E84057",
+          footer: FOOTER_MAIN.text,
+        });
+        const file = new AttachmentBuilder(Buffer.from(transcript, "utf8"), {
+          name: `ticket-${data.userId}-${Date.now()}.txt`,
+        });
+        const transcriptMessage = await logChannel.send({ embeds: [embed], files: [file], allowedMentions: { parse: [] } });
+        data.transcriptChannelId = logChannel.id;
+        data.transcriptMessageId = transcriptMessage.id;
+        await setTicketTranscript(ticketId, logChannel.id, transcriptMessage.id);
+      }
+    }
+  } catch (error) {
+    console.error("Ticket close failed:", error);
+  }
+}
+
+export function closeEmbed(user, ticket = {}, config = {}) {
+  const settings = {
+    title: "Ticket closed",
+    description: "This ticket is now closed. The channel and transcript are retained; use `/delete` when you are ready to remove it.",
+    color: "#E84057",
+    footer: FOOTER_MAIN.text,
+    ...(config.closedEmbed || {}),
+  };
+  return buildSupportEmbed(settings, {
+    user: ticket.userId ? `<@${ticket.userId}>` : "",
+    type: ticket.type || "ticket",
+    closer: user.tag || user.username,
+    channel: ticket.channelId ? `<#${ticket.channelId}>` : "",
+  });
 }

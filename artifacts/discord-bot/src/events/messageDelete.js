@@ -1,5 +1,5 @@
 import { Events, EmbedBuilder } from "discord.js";
-import { ghostPingChannels } from "../data/store.js";
+import { ghostPingChannels, modmailTickets, tickets } from "../data/store.js";
 import { NILOU_RED, FOOTER_GHOST } from "../theme.js";
 import { sendLog } from "../utils/logger.js";
 
@@ -8,6 +8,7 @@ export const name = Events.MessageDelete;
 export async function execute(message) {
   if (!message.guild) return;
   if (message.author?.bot) return;
+  if (tickets.has(`${message.guildId}:${message.channelId}`) || modmailTickets.has(message.channelId)) return;
   if (!ghostPingChannels.has(message.guildId)) return;
 
   const logChannelId = ghostPingChannels.get(message.guildId) ?? null;

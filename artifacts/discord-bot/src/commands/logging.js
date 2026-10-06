@@ -4,7 +4,7 @@ import { isAdmin, denyAdmin } from "../utils/adminCheck.js";
 import { loggingConfig } from "../data/store.js";
 import { upsertGuildSettings } from "../db/index.js";
 
-const ALL_EVENTS = ["messageDelete","messageUpdate","memberJoin","memberLeave","banAdd","banRemove","warn","ticket","kick","roleAdd","roleRemove"];
+const ALL_EVENTS = ["messageDelete","messageUpdate","memberJoin","memberLeave","banAdd","banRemove","warn","ticket","kick","roleAdd","roleRemove","echo"];
 
 export const data = new SlashCommandBuilder()
   .setName("logging")

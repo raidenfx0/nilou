@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import SupportDashboard from "./SupportDashboard";
 
 const BASE = import.meta.env.BASE_URL;
 const API  = `${BASE}bot-api`;
@@ -58,7 +59,10 @@ const COMMANDS = [
   {name:"/adminrole set/remove/view",desc:"Set which role can use admin commands (saved to DB)",cat:"Utility"},
   {name:"/welcome set/disable/test/info",desc:"Configure welcome embed (full builder)",cat:"Utility"},
   {name:"/afk set/clear",desc:"AFK status system",cat:"AFK"},
-  {name:"/ticket open/close/panel/setup",desc:"Full ticket system",cat:"Tickets"},
+  {name:"/ticket open/close/panel/setup",desc:"Configurable ticket panels and ticket management",cat:"Tickets"},
+  {name:"/delete",desc:"Permanently delete a closed ticket and its saved transcript",cat:"Tickets"},
+  {name:"/modmail setup/reply/close",desc:"Private staff conversations with members",cat:"Tickets"},
+  {name:"/echo",desc:"Send a message anonymously (Manage Server only)",cat:"Moderation"},
   {name:"/giveaway start/end/reroll/list",desc:"Giveaway management",cat:"Giveaway"},
   {name:"/trigger add/remove/list",desc:"Auto-response triggers",cat:"Triggers"},
   {name:"/sticky set",desc:"Embed sticky message with image/thumbnail/footer",cat:"Moderation"},
@@ -98,7 +102,7 @@ const CAT_COLOR:Record<string,string>={
   Genshin:"bg-blue-900/40 text-blue-300 border-blue-800/50",
 };
 
-const ALL_LOG_EVENTS = ["messageDelete","messageUpdate","memberJoin","memberLeave","banAdd","banRemove","warn","ticket","kick","roleAdd","roleRemove"];
+const ALL_LOG_EVENTS = ["messageDelete","messageUpdate","memberJoin","memberLeave","banAdd","banRemove","warn","ticket","kick","roleAdd","roleRemove","echo"];
 
 /* ─── Main App ─────────────────────────────────────────────────────────── */
 export default function App() {
@@ -218,7 +222,7 @@ export default function App() {
             {tab==="counting"  &&<CountingTab guilds={guilds} countingMap={countingMap}/>}
             {tab==="starboard" &&<StarboardTab guilds={guilds} starboardMap={starboardMap}/>}
             {tab==="guilds"    &&<GuildsTab guilds={guilds}/>}
-            {tab==="tickets"   &&<TicketsTab openTickets={openTickets}/>}
+            {tab==="tickets"   &&<SupportDashboard guilds={guilds} onRefresh={fetchAll}/>}
             {tab==="afk"       &&<AfkTab afk={afk}/>}
             {tab==="commands"  &&<CommandsTab/>}
           </>
