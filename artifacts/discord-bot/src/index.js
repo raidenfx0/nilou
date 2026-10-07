@@ -32,6 +32,8 @@ import { scheduleTheaterDropsForGuild, startTheaterDropScheduler } from "./event
 import {
   tickets,
   ticketConfig,
+  boosterConfigs,
+  twitchSubscriberConfigs,
   afkUsers,
   stickyMessages,
   welcomeChannels,
@@ -603,6 +605,13 @@ const normalizeSupportEmbed = (value = {}) => {
     thumbnailUrl: textValue(embed.thumbnailUrl, 2048),
   };
 };
+const hasSupportEmbedContent = (embed = {}) => Boolean(
+  embed.title?.trim()
+  || embed.description?.trim()
+  || embed.footer?.trim()
+  || embed.imageUrl?.trim()
+  || embed.thumbnailUrl?.trim()
+);
 
 const server = createServer(async (req, res) => {
   res.setHeader("Content-Type", "application/json");
@@ -625,6 +634,8 @@ const server = createServer(async (req, res) => {
         configs[guild.id] = {
           ticket: getTicketDashboardConfig(guild.id),
           modmail: getModmailDashboardConfig(guild.id),
+          boost: boosterConfigs.get(guild.id) || null,
+          twitchSubscriber: twitchSubscriberConfigs.get(guild.id) || null,
         };
       }
       res.end(JSON.stringify({
@@ -793,10 +804,16 @@ const server = createServer(async (req, res) => {
     const body = await readBody(req);
 
     if (url === "/api/support/config") {
-      const { guildId, ticket: ticketInput, modmail: modmailInput } = body;
-      if (!guildId || (!ticketInput && !modmailInput)) {
+      const {
+        guildId,
+        ticket: ticketInput,
+        modmail: modmailInput,
+        boost: boostInput,
+        twitchSubscriber: twitchSubscriberInput,
+      } = body;
+      if (!guildId || (!ticketInput && !modmailInput && !boostInput && !twitchSubscriberInput)) {
         res.statusCode = 400;
-        res.end(JSON.stringify({ error: "guildId and ticket or modmail settings are required" }));
+        res.end(JSON.stringify({ error: "guildId and support settings are required" }));
         return;
       }
       const guild = client.guilds.cache.get(guildId);
@@ -835,6 +852,7 @@ const server = createServer(async (req, res) => {
             panelOptions: options,
             panelEmbed: normalizeSupportEmbed(ticketInput.panelEmbed),
             openedEmbed: normalizeSupportEmbed(ticketInput.openedEmbed),
+            openedLogEmbed: normalizeSupportEmbed(ticketInput.openedLogEmbed || previous.openedLogEmbed),
             closedEmbed: normalizeSupportEmbed(ticketInput.closedEmbed),
           };
           await upsertGuildSettings(guildId, {
@@ -848,10 +866,74 @@ const server = createServer(async (req, res) => {
               panelOptions: savedTicket.panelOptions,
               panelEmbed: savedTicket.panelEmbed,
               openedEmbed: savedTicket.openedEmbed,
+              openedLogEmbed: savedTicket.openedLogEmbed,
               closedEmbed: savedTicket.closedEmbed,
             }),
           });
           ticketConfig.set(guildId, savedTicket);
+        }
+
+        if (boostInput) {
+          const previous = boosterConfigs.get(guildId) || {};
+          const enabled = Boolean(boostInput.enabled);
+          const channelId = textValue(boostInput.channelId ?? previous.channelId, 20).trim();
+          const content = textValue(boostInput.content ?? previous.content, 2000);
+          const embed = normalizeSupportEmbed(boostInput.embed || previous.embed);
+          if (enabled) {
+            if (!isSnowflake(channelId)) {
+              res.statusCode = 400;
+              res.end(JSON.stringify({ error: "Enabled boost thank-yous need a valid channel ID." }));
+              return;
+            }
+            const channel = await guild.channels.fetch(channelId).catch(() => null);
+            if (!channel?.isTextBased?.()) {
+              res.statusCode = 400;
+              res.end(JSON.stringify({ error: "The configured boost thank-you channel could not be found." }));
+              return;
+            }
+            if (!content.trim() && !hasSupportEmbedContent(embed)) {
+              res.statusCode = 400;
+              res.end(JSON.stringify({ error: "Add message text or at least one embed field before enabling boost thank-yous." }));
+              return;
+            }
+          }
+          const savedBoost = { enabled, channelId, content, embed };
+          await upsertGuildSettings(guildId, {
+            booster_message_config: JSON.stringify(savedBoost),
+          });
+          boosterConfigs.set(guildId, savedBoost);
+        }
+
+        if (twitchSubscriberInput) {
+          const previous = twitchSubscriberConfigs.get(guildId) || {};
+          const enabled = Boolean(twitchSubscriberInput.enabled);
+          const channelId = textValue(twitchSubscriberInput.channelId ?? previous.channelId, 20).trim();
+          const roleId = textValue(twitchSubscriberInput.roleId ?? previous.roleId, 20).trim();
+          const content = textValue(twitchSubscriberInput.content ?? previous.content, 2000);
+          const embed = normalizeSupportEmbed(twitchSubscriberInput.embed || previous.embed);
+          if (enabled) {
+            if (!isSnowflake(channelId) || !isSnowflake(roleId)) {
+              res.statusCode = 400;
+              res.end(JSON.stringify({ error: "Enabled Twitch thank-yous need valid channel and subscriber role IDs." }));
+              return;
+            }
+            const channel = await guild.channels.fetch(channelId).catch(() => null);
+            if (!channel?.isTextBased?.() || !guild.roles.cache.has(roleId)) {
+              res.statusCode = 400;
+              res.end(JSON.stringify({ error: "The configured Twitch thank-you channel or subscriber role could not be found." }));
+              return;
+            }
+            if (!content.trim() && !hasSupportEmbedContent(embed)) {
+              res.statusCode = 400;
+              res.end(JSON.stringify({ error: "Add message text or at least one embed field before enabling Twitch thank-yous." }));
+              return;
+            }
+          }
+          const savedTwitchSubscriber = { enabled, channelId, roleId, content, embed };
+          await upsertGuildSettings(guildId, {
+            twitch_subscriber_config: JSON.stringify(savedTwitchSubscriber),
+          });
+          twitchSubscriberConfigs.set(guildId, savedTwitchSubscriber);
         }
 
         if (modmailInput) {

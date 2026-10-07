@@ -3,6 +3,7 @@ import * as messageDeleteEvent       from "../events/messageDelete.js";
 import * as messageUpdateEvent       from "../events/messageUpdate.js";
 import * as guildMemberAddEvent      from "../events/guildMemberAdd.js";
 import * as guildMemberRemoveEvent   from "../events/guildMemberRemove.js";
+import * as guildMemberUpdateEvent   from "../events/guildMemberUpdate.js";
 import * as guildBanAddEvent         from "../events/guildBanAdd.js";
 import * as guildBanRemoveEvent      from "../events/guildBanRemove.js";
 import * as messageReactionAddEvent  from "../events/messageReactionAdd.js";
@@ -15,6 +16,7 @@ export function loadEvents(client) {
     messageUpdateEvent,
     guildMemberAddEvent,
     guildMemberRemoveEvent,
+    guildMemberUpdateEvent,
     guildBanAddEvent,
     guildBanRemoveEvent,
     messageReactionAddEvent,

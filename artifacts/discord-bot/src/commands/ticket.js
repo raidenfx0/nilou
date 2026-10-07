@@ -95,6 +95,14 @@ export function getTicketDashboardConfig(guildId) {
       imageUrl: "",
       thumbnailUrl: "",
     },
+    openedLogEmbed: config.openedLogEmbed || {
+      title: "✦ Ticket opened",
+      description: "{user} opened a {type} ticket in {channel}.",
+      color: "#E84057",
+      footer: FOOTER_MAIN.text,
+      imageUrl: "",
+      thumbnailUrl: "",
+    },
     closedEmbed: config.closedEmbed || {
       title: "Ticket closed",
       description: "This ticket is now closed. The channel and transcript are retained; use `/delete` when you are ready to remove it.",
@@ -387,11 +395,12 @@ export async function openTicket({ guild, user, type, reason }) {
     });
 
     // Save to memory + DB
+    const openedAt = Date.now();
     const ticketData = {
       id: `${guild.id}:${channel.id}`,
       channelId: channel.id, guildId: guild.id,
       userId, type: ticketType, reason, open: true,
-      openedAt: Date.now(), members: [],
+      openedAt, members: [],
     };
     tickets.set(`${guild.id}:${channel.id}`, ticketData);
     await upsertTicket(ticketData);
@@ -405,6 +414,8 @@ export async function openTicket({ guild, user, type, reason }) {
       reason,
       channel: `<#${channel.id}>`,
       staff: config.staffRoleId ? `<@&${config.staffRoleId}>` : "staff",
+      openedAt: `<t:${Math.floor(openedAt / 1000)}:F>`,
+      openTickets: String([...tickets.values()].filter((ticket) => ticket.guildId === guild.id && ticket.open).length),
     };
     const settings = getTicketDashboardConfig(guild.id);
     const embed = buildSupportEmbed(settings.openedEmbed, variables, {
@@ -432,13 +443,22 @@ export async function openTicket({ guild, user, type, reason }) {
     if (config.logChannelId) {
       const logChannel = await guild.channels.fetch(config.logChannelId).catch(() => null);
       if (logChannel?.isTextBased?.()) {
-        const logEmbed = buildSupportEmbed(settings.openedEmbed, { ...variables, reason: "" }, {
-          title: "Ticket opened",
+        const logEmbed = buildSupportEmbed(settings.openedLogEmbed, variables, {
+          title: "✦ Ticket opened",
           description: "{user} opened a {type} ticket in {channel}.",
           color: "#E84057",
           footer: FOOTER_MAIN.text,
+        }).addFields(
+          { name: "Member", value: `${user.username} · ${userId}`, inline: true },
+          { name: "Ticket type", value: ticketType.slice(0, 1024), inline: true },
+          { name: "Channel", value: `<#${channel.id}>`, inline: true },
+          { name: "Reason", value: (reason || "No reason provided").slice(0, 1024), inline: false },
+          { name: "Opened", value: `<t:${Math.floor(openedAt / 1000)}:F>`, inline: true },
+          { name: "Open tickets", value: variables.openTickets, inline: true },
+        );
+        await logChannel.send({ embeds: [logEmbed], allowedMentions: { parse: [] } }).catch((error) => {
+          console.error(`Could not log ticket opening for ${channel.id}:`, error);
         });
-        await logChannel.send({ embeds: [logEmbed], allowedMentions: { parse: [] } }).catch(() => {});
       }
     }
 

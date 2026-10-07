@@ -560,7 +560,9 @@ export async function ensureTables() {
   `);
   await pool.query(`
     ALTER TABLE guild_settings
-      ADD COLUMN IF NOT EXISTS ticket_ui_config JSONB NOT NULL DEFAULT '{}'::jsonb;
+      ADD COLUMN IF NOT EXISTS ticket_ui_config JSONB NOT NULL DEFAULT '{}'::jsonb,
+      ADD COLUMN IF NOT EXISTS booster_message_config JSONB NOT NULL DEFAULT '{}'::jsonb,
+      ADD COLUMN IF NOT EXISTS twitch_subscriber_config JSONB NOT NULL DEFAULT '{}'::jsonb;
   `);
 
   console.log("\u2705 Auto-created activity, music, economy and giveaway tables; migration complete");
@@ -864,6 +866,14 @@ export async function hydrateStore(store) {
       logChannelId:          row.ticket_log_channel,
       ...ticketUiConfig,
     });
+    const boosterConfig = parseJsonObject(row.booster_message_config);
+    if (Object.keys(boosterConfig).length) {
+      store.boosterConfigs.set(row.guild_id, boosterConfig);
+    }
+    const twitchSubscriberConfig = parseJsonObject(row.twitch_subscriber_config);
+    if (Object.keys(twitchSubscriberConfig).length) {
+      store.twitchSubscriberConfigs.set(row.guild_id, twitchSubscriberConfig);
+    }
     store.loggingConfig.set(row.guild_id, {
       enabled:   row.logging_enabled,
       channelId: row.log_channel_id,

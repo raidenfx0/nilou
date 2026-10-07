@@ -15,9 +15,10 @@ type EmbedTemplate = {
   imageUrl: string;
   thumbnailUrl: string;
 };
+type EventMessageConfig = { enabled: boolean; channelId: string; roleId?: string; content: string; embed: EmbedTemplate };
 type PanelOption = { key: string; label: string; description: string; emoji: string; categoryId: string; style: string };
 type ModmailCategory = { key: string; label: string; description: string; emoji: string };
-type TicketConfig = { panelMode: "buttons" | "select"; panelOptions: PanelOption[]; panelEmbed: EmbedTemplate; openedEmbed: EmbedTemplate; closedEmbed: EmbedTemplate };
+type TicketConfig = { panelMode: "buttons" | "select"; panelOptions: PanelOption[]; panelEmbed: EmbedTemplate; openedEmbed: EmbedTemplate; openedLogEmbed: EmbedTemplate; closedEmbed: EmbedTemplate };
 type ModmailConfig = {
   enabled: boolean;
   categoryId: string;
@@ -29,7 +30,7 @@ type ModmailConfig = {
 };
 type TicketRow = { id: string; channelId: string; guildId: string; userId: string; type: string; reason: string; open: boolean; openedAt: number };
 type ModmailRow = { channelId: string; guildId: string; userId: string; username: string; categoryKey: string; categoryName: string; open: boolean; openedAt: number };
-type SupportResponse = { configs: Record<string, { ticket?: TicketConfig; modmail?: ModmailConfig | null }>; tickets: TicketRow[]; modmailTickets: ModmailRow[] };
+type SupportResponse = { configs: Record<string, { ticket?: TicketConfig; modmail?: ModmailConfig | null; boost?: EventMessageConfig | null; twitchSubscriber?: EventMessageConfig | null }>; tickets: TicketRow[]; modmailTickets: ModmailRow[] };
 type Props = { guilds: { id: string; name: string }[]; onRefresh: () => void };
 
 const blankEmbed = (): EmbedTemplate => ({ title: "", description: "", color: "#b95e71", footer: "", imageUrl: "", thumbnailUrl: "" });
@@ -38,7 +39,21 @@ const defaultTicket = (): TicketConfig => ({
   panelOptions: [{ key: "general", label: "General support", description: "Ask the team for help", emoji: "", categoryId: "", style: "primary" }],
   panelEmbed: { ...blankEmbed(), title: "How can we help?", description: "Choose a topic below to open a private support ticket." },
   openedEmbed: { ...blankEmbed(), title: "Your ticket is open", description: "A moderator will be with you shortly." },
+  openedLogEmbed: { ...blankEmbed(), title: "Ticket opened", description: "{user} opened a {type} ticket in {channel}." },
   closedEmbed: { ...blankEmbed(), title: "Ticket closed", description: "This conversation has been closed." },
+});
+const defaultBoostMessage = (): EventMessageConfig => ({
+  enabled: false,
+  channelId: "",
+  content: "Thank you {user} for boosting {server}!",
+  embed: { ...blankEmbed(), title: "Thank you for the boost!", description: "{user} just boosted **{server}**." },
+});
+const defaultTwitchSubscriberMessage = (): EventMessageConfig => ({
+  enabled: false,
+  channelId: "",
+  roleId: "",
+  content: "Thanks {user} for subscribing on Twitch!",
+  embed: { ...blankEmbed(), title: "Thank you for subscribing!", description: "{user} just subscribed to the Twitch integration." },
 });
 const defaultModmail = (): ModmailConfig => ({
   enabled: false,
@@ -82,6 +97,33 @@ function EmbedEditor({ title, value, onChange }: { title: string; value: EmbedTe
         <label className="sm:col-span-2"><span className={labelClass}>Thumbnail URL</span><input className={inputClass} value={value.thumbnailUrl ?? ""} onChange={e => set("thumbnailUrl", e.target.value)} placeholder="https://" /></label>
       </div>
     </details>
+  );
+}
+
+function EventMessageEditor({ title, help, config, onChange, requireRole = false }: {
+  title: string;
+  help: string;
+  config: EventMessageConfig;
+  onChange: (value: EventMessageConfig) => void;
+  requireRole?: boolean;
+}) {
+  return (
+    <section className={cardClass}>
+      <div className="mb-4 flex items-start justify-between gap-4">
+        <div><h2 className="text-lg font-semibold">{title}</h2><p className="mt-1 text-sm leading-5 text-rose-100/55">{help}</p></div>
+        <label className="flex shrink-0 cursor-pointer items-center gap-2 rounded-lg border border-rose-950/70 bg-[#1e171a] px-3 py-2 text-sm">
+          <input type="checkbox" checked={config.enabled} onChange={event => onChange({ ...config, enabled: event.target.checked })} className="h-4 w-4 accent-rose-300" />
+          <span>Enabled</span>
+        </label>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label><span className={labelClass}>Announcement channel ID</span><input className={inputClass} value={config.channelId} onChange={event => onChange({ ...config, channelId: event.target.value })} placeholder="Discord channel ID" /></label>
+        {requireRole && <label><span className={labelClass}>Twitch subscriber role ID</span><input className={inputClass} value={config.roleId ?? ""} onChange={event => onChange({ ...config, roleId: event.target.value })} placeholder="Role granted to Twitch subscribers" /></label>}
+        <label className="sm:col-span-2"><span className={labelClass}>Message text</span><textarea className={`${inputClass} min-h-20 resize-y`} value={config.content} onChange={event => onChange({ ...config, content: event.target.value })} placeholder="Write an optional plain-text message" /></label>
+      </div>
+      <p className="mt-2 text-xs leading-5 text-rose-100/40">Placeholders: {"{user}"}, {"{user.name}"}, {"{user.tag}"}, {"{server}"}. Boost messages also support {"{boosts}"} and {"{tier}"}.</p>
+      <div className="mt-4"><EmbedEditor title={`${title} embed`} value={config.embed} onChange={embed => onChange({ ...config, embed })} /></div>
+    </section>
   );
 }
 
