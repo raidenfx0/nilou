@@ -46,11 +46,6 @@ export async function getAllAfk() {
 
 // ─── ModMail ─────────────────────────────────────────────────────────────────
 export async function upsertModmailConfig(config) {
-  const uiConfig = config.uiConfig || {
-    categories: config.categories,
-    embeds: config.embeds,
-    responseTimeoutMinutes: config.responseTimeoutMinutes,
-  };
   await pool.query(
     `INSERT INTO modmail_config (guild_id, category_id, log_channel_id, staff_role_id, enabled, ui_config)
      VALUES ($1,$2,$3,$4,$5,$6::jsonb)
@@ -63,7 +58,7 @@ export async function upsertModmailConfig(config) {
       config.logChannelId,
       config.staffRoleId,
       config.enabled !== false,
-      JSON.stringify(uiConfig),
+      JSON.stringify(config.uiConfig || {}),
     ],
   );
 }
@@ -548,8 +543,6 @@ export async function ensureTables() {
       ADD COLUMN IF NOT EXISTS transcript_message_id VARCHAR(50);
     CREATE INDEX IF NOT EXISTS idx_modmail_tickets_user_open
       ON modmail_tickets (user_id, open);
-  `);
-  await pool.query(`
     CREATE TABLE IF NOT EXISTS tickets (
       id VARCHAR(100) PRIMARY KEY,
       channel_id VARCHAR(50) NOT NULL,
@@ -561,11 +554,13 @@ export async function ensureTables() {
       opened_at BIGINT NOT NULL,
       members TEXT NOT NULL DEFAULT '[]'
     );
-    ALTER TABLE guild_settings
-      ADD COLUMN IF NOT EXISTS ticket_ui_config JSONB NOT NULL DEFAULT '{}'::jsonb;
     ALTER TABLE tickets
       ADD COLUMN IF NOT EXISTS transcript_channel_id VARCHAR(50),
       ADD COLUMN IF NOT EXISTS transcript_message_id VARCHAR(50);
+  `);
+  await pool.query(`
+    ALTER TABLE guild_settings
+      ADD COLUMN IF NOT EXISTS ticket_ui_config JSONB NOT NULL DEFAULT '{}'::jsonb;
   `);
 
   console.log("\u2705 Auto-created activity, music, economy and giveaway tables; migration complete");

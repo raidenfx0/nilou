@@ -544,16 +544,25 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return;
       }
 
-      await interaction.reply({
-        embeds: [closeEmbed(interaction.user, ticket, ticketConfig.get(interaction.guildId))],
-      });
-      await closeTicket(
-        interaction.channel,
-        ticket,
-        ticketId,
-        interaction.user,
-        interaction.guild,
-      );
+      await interaction.deferReply({ ephemeral: true });
+      try {
+        const closedTicket = await closeTicket(
+          interaction.channel,
+          ticket,
+          ticketId,
+          interaction.user,
+          interaction.guild,
+        );
+        await interaction.channel.send({
+          embeds: [closeEmbed(interaction.user, closedTicket, ticketConfig.get(interaction.guildId))],
+          allowedMentions: { parse: [] },
+        }).catch((error) => console.warn("Ticket close notice could not be posted:", error.message));
+        await interaction.editReply({ content: "Ticket closed. The transcript has been saved." });
+      } catch (error) {
+        await interaction.editReply({
+          content: `The ticket is still open because its transcript could not be saved: ${error.message}`,
+        });
+      }
       return;
     }
   }

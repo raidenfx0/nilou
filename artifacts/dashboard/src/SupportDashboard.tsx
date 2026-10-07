@@ -51,8 +51,8 @@ const defaultModmail = (): ModmailConfig => ({
     serverPicker: { ...blankEmbed(), title: "Choose a server", description: "Select the community you want to contact." },
     topicPicker: { ...blankEmbed(), title: "Choose a topic", description: "What would you like to talk about?" },
     opened: { ...blankEmbed(), title: "Conversation opened", description: "A member of the team will reply here." },
-    userMessage: { ...blankEmbed(), title: "New message", description: "{message}" },
-    staffReply: { ...blankEmbed(), title: "Team reply", description: "{message}" },
+    userMessage: { ...blankEmbed(), title: "New message", description: "A new message has arrived." },
+    staffReply: { ...blankEmbed(), title: "Team reply", description: "The team has replied to your conversation." },
     closed: { ...blankEmbed(), title: "Conversation closed", description: "This conversation has been closed." },
   },
 });
@@ -191,7 +191,7 @@ export default function SupportDashboard({ guilds, onRefresh }: Props) {
   const updateModmailEmbed = (key: keyof ModmailConfig["embeds"], value: EmbedTemplate) => setModmail(current => ({ ...current, embeds: { ...current.embeds, [key]: value } }));
 
   return (
-    <section className="min-h-[100dvh] space-y-6 text-rose-50">
+    <main className="min-h-[100dvh] space-y-6 text-rose-50">
       <header className="relative overflow-hidden rounded-2xl border border-rose-950/70 bg-[#241a1e] px-5 py-6 sm:px-8 sm:py-8">
         <div className="pointer-events-none absolute -right-10 -top-20 h-64 w-64 rounded-full border border-rose-500/10" />
         <div className="pointer-events-none absolute -right-1 top-4 h-40 w-40 rounded-full border border-rose-500/10" />
@@ -242,7 +242,7 @@ export default function SupportDashboard({ guilds, onRefresh }: Props) {
             </div>
           </section>
           <section className={cardClass}>
-            <p className="text-xs font-semibold uppercase tracking-[.17em] text-rose-300">02 / Messages</p><h2 className="mt-1 text-xl font-semibold">Ticket embed templates</h2><p className="mb-4 mt-1 text-xs text-rose-100/45">Available placeholders include {"{user}"}, {"{type}"}, {"{reason}"}, {"{server}"}, {"{channel}"}, and {"{closer}"}.</p>
+            <p className="text-xs font-semibold uppercase tracking-[.17em] text-rose-300">02 / Messages</p><h2 className="mb-4 mt-1 text-xl font-semibold">Ticket embed templates</h2>
             <div className="space-y-2.5">
               <EmbedEditor title="Ticket panel" value={ticket.panelEmbed} onChange={value => updateTicketEmbed("panelEmbed", value)} />
               <EmbedEditor title="Ticket opened" value={ticket.openedEmbed} onChange={value => updateTicketEmbed("openedEmbed", value)} />
@@ -270,7 +270,7 @@ export default function SupportDashboard({ guilds, onRefresh }: Props) {
             </div>
           </section>
           <section className={cardClass}>
-            <p className="text-xs font-semibold uppercase tracking-[.17em] text-rose-300">03 / Messages</p><h2 className="mt-1 text-xl font-semibold">ModMail embed templates</h2><p className="mb-4 mt-1 text-xs text-rose-100/45">Use placeholders such as {"{message}"}, {"{user}"}, {"{server}"}, {"{topic}"}, and {"{staff}"} in titles or descriptions.</p>
+            <p className="text-xs font-semibold uppercase tracking-[.17em] text-rose-300">03 / Messages</p><h2 className="mb-4 mt-1 text-xl font-semibold">ModMail embed templates</h2>
             <div className="space-y-2.5">
               <EmbedEditor title="Server picker" value={modmail.embeds.serverPicker} onChange={value => updateModmailEmbed("serverPicker", value)} />
               <EmbedEditor title="Topic picker" value={modmail.embeds.topicPicker} onChange={value => updateModmailEmbed("topicPicker", value)} />
@@ -304,6 +304,6 @@ export default function SupportDashboard({ guilds, onRefresh }: Props) {
           }
         </section>
       )}
-    </section>
+    </main>
   );
 }

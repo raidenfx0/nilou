@@ -22,6 +22,7 @@ import { buildSupportEmbed } from "../utils/supportEmbeds.js";
 
 // ABSOLUTE LOCK: Prevents a user from starting any ticket process while one is active.
 const creationLock = new Set();
+const closingTickets = new Set();
 const DEFAULT_PANEL_OPTIONS = [
   { key: "support", label: "Support", description: "Get help from the staff team", emoji: "🎫", categoryField: "supportCategoryId", style: "primary" },
   { key: "appeal", label: "Appeal", description: "Appeal a moderation decision", emoji: "⚖️", categoryField: "appealCategoryId", style: "secondary" },
@@ -298,8 +299,23 @@ export async function execute(interaction) {
       return interaction.reply({ content: "This ticket is already closed. Use `/delete` to remove it.", ephemeral: true });
     }
 
-    await interaction.reply({ embeds: [closeEmbed(interaction.user, ticket, ticketConfig.get(interaction.guildId))] });
-    return closeTicket(interaction.channel, ticket || { type: "Unknown", userId: "0" }, ticketId, interaction.user, interaction.guild);
+    await interaction.deferReply({ ephemeral: true });
+    try {
+      const closedTicket = await closeTicket(
+        interaction.channel,
+        ticket || { type: "Unknown", userId: "0" },
+        ticketId,
+        interaction.user,
+        interaction.guild,
+      );
+      await interaction.channel.send({
+        embeds: [closeEmbed(interaction.user, closedTicket, ticketConfig.get(interaction.guildId))],
+        allowedMentions: { parse: [] },
+      }).catch((error) => console.warn("Ticket close notice could not be posted:", error.message));
+      return interaction.editReply({ content: "Ticket closed. The transcript has been saved." });
+    } catch (error) {
+      return interaction.editReply({ content: `The ticket is still open because its transcript could not be saved: ${error.message}` });
+    }
   }
 
   if (sub === "add" || sub === "remove") {
@@ -440,7 +456,7 @@ async function ticketTranscript(channel) {
   const messages = [];
   let before;
   for (let page = 0; page < 5; page += 1) {
-    const batch = await channel.messages.fetch({ limit: 100, ...(before ? { before } : {}) }).catch(() => null);
+    const batch = await channel.messages.fetch({ limit: 100, ...(before ? { before } : {}) });
     if (!batch?.size) break;
     messages.push(...batch.values());
     before = batch.last()?.id;
@@ -459,18 +475,18 @@ async function ticketTranscript(channel) {
 }
 
 export async function closeTicket(channel, ticket, ticketId, user, guild) {
+  if (closingTickets.has(ticketId)) {
+    throw new Error("This ticket is already being closed.");
+  }
+  closingTickets.add(ticketId);
+
   try {
     const data = tickets.get(ticketId) || ticket;
-    if (!data.open) return;
-    data.open = false;
-    data.closedAt = Date.now();
-    tickets.set(ticketId, data);
-    await closeTicketDb(ticketId);
-    const config = ticketConfig.get(guild.id) || {};
-    await channel.permissionOverwrites.edit(data.userId, { SendMessages: false }).catch(() => {});
-    if (config.staffRoleId) {
-      await channel.permissionOverwrites.edit(config.staffRoleId, { SendMessages: false }).catch(() => {});
+    if (!data?.open) {
+      throw new Error("This ticket is not open.");
     }
+
+    const config = ticketConfig.get(guild.id) || {};
     const settings = getTicketDashboardConfig(guild.id);
     const variables = {
       user: `<@${data.userId}>`,
@@ -483,27 +499,63 @@ export async function closeTicket(channel, ticket, ticketId, user, guild) {
       staff: user.tag || user.username,
       closer: user.tag || user.username,
     };
+
+    const transcript = await ticketTranscript(channel);
+    const embed = buildSupportEmbed(settings.closedEmbed, variables, {
+      title: "Ticket closed",
+      description: "{user}'s {type} ticket was closed by {closer}. The transcript is attached.",
+      color: "#E84057",
+      footer: FOOTER_MAIN.text,
+    });
+    const file = new AttachmentBuilder(Buffer.from(transcript, "utf8"), {
+      name: `ticket-${data.userId}-${Date.now()}.txt`,
+    });
+    const payload = { embeds: [embed], files: [file], allowedMentions: { parse: [] } };
+
+    let transcriptChannel = channel;
     if (config.logChannelId) {
-      const logChannel = await guild.channels.fetch(config.logChannelId).catch(() => null);
-      if (logChannel?.isTextBased?.()) {
-        const transcript = await ticketTranscript(channel);
-        const embed = buildSupportEmbed(settings.closedEmbed, variables, {
-          title: "Ticket closed",
-          description: "{user}'s {type} ticket was closed by {closer}. The transcript is attached.",
-          color: "#E84057",
-          footer: FOOTER_MAIN.text,
-        });
-        const file = new AttachmentBuilder(Buffer.from(transcript, "utf8"), {
-          name: `ticket-${data.userId}-${Date.now()}.txt`,
-        });
-        const transcriptMessage = await logChannel.send({ embeds: [embed], files: [file], allowedMentions: { parse: [] } });
-        data.transcriptChannelId = logChannel.id;
-        data.transcriptMessageId = transcriptMessage.id;
-        await setTicketTranscript(ticketId, logChannel.id, transcriptMessage.id);
+      const configuredChannel = await guild.channels.fetch(config.logChannelId).catch(() => null);
+      if (configuredChannel?.isTextBased?.()) {
+        transcriptChannel = configuredChannel;
+      } else {
+        console.warn(`Ticket log channel ${config.logChannelId} is unavailable; saving the transcript in the ticket channel.`);
       }
     }
+
+    let transcriptMessage;
+    try {
+      transcriptMessage = await transcriptChannel.send(payload);
+    } catch (error) {
+      if (transcriptChannel.id === channel.id) throw error;
+      console.warn(`Could not save the ticket transcript in ${transcriptChannel.id}; trying the ticket channel:`, error.message);
+      transcriptChannel = channel;
+      transcriptMessage = await transcriptChannel.send(payload);
+    }
+
+    try {
+      await setTicketTranscript(ticketId, transcriptChannel.id, transcriptMessage.id);
+      await closeTicketDb(ticketId);
+    } catch (error) {
+      await transcriptMessage.delete().catch(() => {});
+      await setTicketTranscript(ticketId, null, null).catch(() => {});
+      throw error;
+    }
+
+    data.transcriptChannelId = transcriptChannel.id;
+    data.transcriptMessageId = transcriptMessage.id;
+    data.closedAt = Date.now();
+    data.open = false;
+    tickets.set(ticketId, data);
+    await channel.permissionOverwrites.edit(data.userId, { SendMessages: false }).catch(() => {});
+    if (config.staffRoleId) {
+      await channel.permissionOverwrites.edit(config.staffRoleId, { SendMessages: false }).catch(() => {});
+    }
+    return data;
   } catch (error) {
     console.error("Ticket close failed:", error);
+    throw error;
+  } finally {
+    closingTickets.delete(ticketId);
   }
 }
 

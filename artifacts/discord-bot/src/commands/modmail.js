@@ -16,7 +16,6 @@ import { buildSupportEmbed } from "../utils/supportEmbeds.js";
 import {
   closeModmailTicket as closeModmailTicketDb,
   createModmailTicket,
-  getAllModmailConfigs,
   setModmailTicketTranscript,
   updateModmailTicketCategory,
   upsertModmailConfig,
@@ -115,7 +114,7 @@ function startReplyTimeout(ticket, config, acknowledgement) {
   if (old?.timer) {
     clearTimeout(old.timer);
     old.message.edit({
-      content: "A newer message was sent to the staff team; the reply reminder has restarted.",
+      content: "A newer message was sent to staff, so this reply reminder has been replaced.",
       embeds: [],
       components: [],
     }).catch(() => {});
@@ -137,7 +136,7 @@ export const data = new SlashCommandBuilder()
   .setName("modmail")
   .setDescription("Set up and manage private ModMail conversations")
   .addSubcommand((sub) =>
-    sub.setName("setup").setDescription("Configure the ModMail category, staff role, and log channel")
+    sub.setName("setup").setDescription("Configure the ModMail category, staff role, and transcript log channel")
       .addChannelOption((option) => option.setName("category")
         .setDescription("Category where private ModMail channels will be created")
         .addChannelTypes(ChannelType.GuildCategory).setRequired(true))
@@ -261,8 +260,7 @@ async function logModmail(client, ticket, title, description, color = NILOU_RED)
       { name: "User", value: `<@${ticket.userId}> (\`${ticket.userId}\`)`, inline: true },
       { name: "Ticket", value: `<#${ticket.channelId}>`, inline: true },
       { name: "Category", value: ticket.categoryName, inline: true },
-    )
-    .setFooter({ text: "Nilou ModMail • Conversation log" });
+    );
   await channel.send({ embeds: [embed], allowedMentions: { parse: [] } }).catch(() => {});
 }
 
@@ -383,20 +381,24 @@ async function createConversation(client, guild, member, category, initialMessag
   const intro = configuredEmbed(config, "opened", {
     user: `<@${member.id}>`,
     "user.name": member.user.username,
-    "user.tag": member.user.tag || member.user.username,
+    "user.tag": member.user.tag,
     server: guild.name,
     topic: category.label,
     category: category.label,
     channel: `<#${channel.id}>`,
-    openedAt: `<t:${Math.floor(ticket.openedAt / 1000)}:F>`,
+    message: "",
+    staff: "",
+  }, {
+    title: "✦ New ModMail Conversation",
+    description: "A member has opened a private support conversation. Reply in this channel or use `/modmail reply`.",
+    color: "#E84057",
+    footer: FOOTER_MAIN.text,
   })
     .addFields(
       { name: "Member", value: `<@${member.id}> (\`${member.id}\`)`, inline: true },
       { name: "Category", value: category.label, inline: true },
       { name: "Opened", value: `<t:${Math.floor(ticket.openedAt / 1000)}:F>`, inline: true },
-    )
-    .setThumbnail(member.user.displayAvatarURL({ size: 128 }))
-    .setFooter({ text: configEmbeds(config).opened.footer || FOOTER_MAIN.text });
+    );
   await channel.send({
     content: `<@&${config.staffRoleId}>`,
     embeds: [intro],
@@ -413,11 +415,8 @@ async function createConversation(client, guild, member, category, initialMessag
       }, {
         user: `<@${member.id}>`,
         "user.name": member.user.username,
-        "user.tag": member.user.tag || member.user.username,
         server: guild.name,
         topic: category.label,
-        category: category.label,
-        channel: `<#${channel.id}>`,
       })],
       allowedMentions: { parse: [] },
     });
@@ -426,10 +425,10 @@ async function createConversation(client, guild, member, category, initialMessag
 }
 
 async function relayStaffReply(client, ticket, content, staffUser, anonymous = false, recordInTicket = false) {
+  const config = modmailConfigs.get(ticket.guildId);
+  const staffName = anonymous ? "Server Support Team" : staffUser.tag || staffUser.username;
   const user = await client.users.fetch(ticket.userId).catch(() => null);
   if (!user) throw new Error("The user could not be found.");
-  const config = modmailConfigs.get(ticket.guildId);
-  const staffName = anonymous ? "Server Support Team" : (staffUser.tag || staffUser.username);
   const embed = embedMessage(
     config,
     "staffReply",
@@ -443,11 +442,8 @@ async function relayStaffReply(client, ticket, content, staffUser, anonymous = f
     {
       user: `<@${ticket.userId}>`,
       "user.name": ticket.username,
-      "user.tag": ticket.username,
-      server: (await client.guilds.fetch(ticket.guildId).catch(() => null))?.name || "",
+      server: client.guilds.cache.get(ticket.guildId)?.name || "",
       topic: ticket.categoryName,
-      category: ticket.categoryName,
-      channel: `<#${ticket.channelId}>`,
       staff: staffName,
     },
   );
@@ -463,13 +459,19 @@ async function relayStaffReply(client, ticket, content, staffUser, anonymous = f
           content,
           0x5865f2,
           null,
-          { staff: staffName, topic: ticket.categoryName, channel: `<#${ticket.channelId}>` },
+          {
+            user: `<@${ticket.userId}>`,
+            "user.name": ticket.username,
+            server: client.guilds.cache.get(ticket.guildId)?.name || "",
+            topic: ticket.categoryName,
+            staff: staffName,
+          },
         )],
         allowedMentions: { parse: [] },
       }).catch(() => {});
     }
   }
-  await clearReplyTimeout(ticket, "A staff reply was delivered to your ModMail conversation.");
+  await clearReplyTimeout(ticket, "A staff reply was sent to your ModMail conversation.");
 }
 
 async function makeTranscript(channel) {
@@ -497,84 +499,92 @@ export async function closeConversation(client, channel, closedBy, reason = "No 
   if (!ticket?.open) throw new Error("This ModMail conversation is already closed.");
 
   const transcript = await makeTranscript(channel);
-  await closeModmailTicketDb(ticket.channelId);
-  ticket.open = false;
-  ticket.closedAt = Date.now();
-  modmailTickets.set(ticket.channelId, ticket);
-  await clearReplyTimeout(ticket, "This ModMail conversation was closed by the staff team.");
-
   const config = modmailConfigs.get(ticket.guildId);
-  await channel.permissionOverwrites.edit(config?.staffRoleId, { SendMessages: false }).catch(() => {});
-  await channel.setTopic(`Closed ModMail | User ID: ${ticket.userId} | Category: ${ticket.categoryName}`).catch(() => {});
   const logChannel = config?.logChannelId
     ? await client.channels.fetch(config.logChannelId).catch(() => null)
     : null;
-  if (logChannel?.isTextBased?.()) {
-    const closeEmbed = configuredEmbed(config, "closed", {
-      user: `<@${ticket.userId}>`,
-      "user.name": ticket.username,
-      "user.tag": ticket.username,
-      server: channel.guild.name,
-      topic: ticket.categoryName,
-      category: ticket.categoryName,
-      channel: `<#${ticket.channelId}>`,
-      staff: closedBy.tag || closedBy.username,
-      closer: closedBy.tag || closedBy.username,
-      reason: "",
-      message: "",
-    }, {
-      title: "✦ ModMail Transcript",
-      description: "Conversation with {user} has been closed by {closer}. The transcript is attached.",
-      color: "#821F32",
-    })
-      .addFields(
-        { name: "Member", value: `${ticket.username} (\`${ticket.userId}\`)`, inline: true },
-        { name: "Closed by", value: closedBy.tag || closedBy.username, inline: true },
-        { name: "Category", value: ticket.categoryName, inline: true },
-      )
-      .setFooter({ text: configEmbeds(config).closed.footer || FOOTER_MAIN.text });
-    const file = new AttachmentBuilder(Buffer.from(transcript, "utf8"), {
-      name: `modmail-${ticket.userId}-${Date.now()}.txt`,
-    });
-    const transcriptMessage = await logChannel.send({
-      embeds: [closeEmbed],
-      files: [file],
-      allowedMentions: { parse: [] },
-    }).catch(() => null);
-    if (transcriptMessage) {
-      ticket.transcriptChannelId = logChannel.id;
-      ticket.transcriptMessageId = transcriptMessage.id;
-      await setModmailTicketTranscript(ticket.channelId, logChannel.id, transcriptMessage.id).catch((error) => {
-        console.error("Could not save ModMail transcript reference:", error.message);
-      });
-    }
+  if (!logChannel?.isTextBased?.()) {
+    throw new Error("The ModMail transcript log channel is unavailable; the conversation was left open.");
   }
+
+  const closedByName = closedBy.tag || closedBy.username;
+  const closeEmbed = configuredEmbed(config, "closed", {
+    user: `<@${ticket.userId}>`,
+    "user.name": ticket.username,
+    "user.tag": ticket.username,
+    server: channel.guild.name,
+    topic: ticket.categoryName,
+    category: ticket.categoryName,
+    channel: `<#${ticket.channelId}>`,
+    message: "",
+    reason: String(reason).slice(0, 900),
+    staff: closedByName,
+    closer: closedByName,
+  }, {
+    title: "✦ ModMail Transcript",
+    description: "Conversation with {user} has been closed.\n\nReason: {reason}",
+    color: "#821F32",
+    footer: FOOTER_MAIN.text,
+  })
+    .addFields(
+      { name: "Member", value: `${ticket.username} (\`${ticket.userId}\`)`, inline: true },
+      { name: "Closed by", value: closedByName, inline: true },
+      { name: "Category", value: ticket.categoryName, inline: true },
+      { name: "Reason", value: String(reason).slice(0, 1024), inline: false },
+    )
+    .setTimestamp();
+  const file = new AttachmentBuilder(Buffer.from(transcript, "utf8"), {
+    name: `modmail-${ticket.userId}-${Date.now()}.txt`,
+  });
+  const transcriptMessage = await logChannel.send({
+    embeds: [closeEmbed],
+    files: [file],
+    allowedMentions: { parse: [] },
+  });
+  try {
+    await setModmailTicketTranscript(ticket.channelId, logChannel.id, transcriptMessage.id);
+    await closeModmailTicketDb(ticket.channelId);
+  } catch (error) {
+    await transcriptMessage.delete().catch(() => {});
+    await setModmailTicketTranscript(ticket.channelId, null, null).catch(() => {});
+    throw error;
+  }
+  ticket.transcriptChannelId = logChannel.id;
+  ticket.transcriptMessageId = transcriptMessage.id;
+  ticket.open = false;
+  modmailTickets.set(ticket.channelId, ticket);
 
   const user = await client.users.fetch(ticket.userId).catch(() => null);
   await user?.send({
     embeds: [configuredEmbed(config, "closed", {
       user: `<@${ticket.userId}>`,
       "user.name": ticket.username,
-      "user.tag": ticket.username,
       server: channel.guild.name,
       topic: ticket.categoryName,
       category: ticket.categoryName,
       channel: `<#${ticket.channelId}>`,
+      reason: String(reason).slice(0, 900),
       staff: closedBy.tag || closedBy.username,
       closer: closedBy.tag || closedBy.username,
-      reason: String(reason).slice(0, 900),
-      message: "",
-    })],
+    }, {
+      title: "✦ Support conversation closed",
+      description: "Your ModMail conversation in **{server}** has been closed.\n\nReason: {reason}",
+      color: "#821F32",
+      footer: FOOTER_MAIN.text,
+    }).setTimestamp()],
   }).catch(() => {});
 
+  await clearReplyTimeout(ticket, "Your ModMail conversation was closed by the staff team.");
+  if (config?.staffRoleId) {
+    await channel.permissionOverwrites.edit(config.staffRoleId, { SendMessages: false }).catch(() => {});
+  }
   return ticket;
 }
 
 function canManageConversation(member, config) {
   if (!member) return false;
   if (member.permissions?.has(PermissionFlagsBits.Administrator)
-      || member.permissions?.has(PermissionFlagsBits.ManageChannels)
-      || member.permissions?.has(PermissionFlagsBits.ManageGuild)) return true;
+      || member.permissions?.has(PermissionFlagsBits.ManageChannels)) return true;
   return Boolean(config?.staffRoleId && member.roles?.cache?.has(config.staffRoleId));
 }
 
@@ -605,7 +615,6 @@ export async function execute(interaction) {
     const logChannel = interaction.options.getChannel("log_channel");
     const staffRole = interaction.options.getRole("staff_role");
     const config = {
-      ...(modmailConfigs.get(interaction.guildId) || {}),
       guildId: interaction.guildId,
       categoryId: category.id,
       logChannelId: logChannel.id,
@@ -666,23 +675,17 @@ export async function handleModmailSelect(interaction) {
     const config = modmailConfigs.get(guildId);
     const member = guild ? await guild.members.fetch(interaction.user.id).catch(() => null) : null;
     if (!guild || !member || !config?.enabled) {
-      clearPendingPrompt(interaction.user.id);
       return interaction.update({
         content: "That server is no longer available for ModMail. Send me another message to try again.",
         embeds: [],
         components: [],
       });
     }
-    await interaction.update({
-      content: "",
-      embeds: [configuredEmbed(config, "topicPicker", {
-        server: guild.name,
-        user: `<@${interaction.user.id}>`,
-      })],
-      components: [categorySelect(guildId, config)],
+    return interaction.update({
+      content: `You selected **${guild.name}**. Choose the topic for your request:`,
+      embeds: [],
+      components: [categorySelect(guildId)],
     });
-    expirePrompt(interaction.user.id, interaction.message, "choose a topic");
-    return;
   }
 
   if (!interaction.customId.startsWith("modmail:category:")) return;
@@ -692,7 +695,6 @@ export async function handleModmailSelect(interaction) {
   const member = guild ? await guild.members.fetch(interaction.user.id).catch(() => null) : null;
   const category = configCategories(config).find((item) => item.key === interaction.values[0]);
   if (!guild || !member || !config?.enabled || !category) {
-    clearPendingPrompt(interaction.user.id);
     return interaction.update({
       content: "I could not complete that request. Send me another message to start again.",
       embeds: [],
@@ -705,19 +707,14 @@ export async function handleModmailSelect(interaction) {
     const pending = pendingRequests.get(interaction.user.id) || [];
     const result = await createConversation(interaction.client, guild, member, category, pending);
     pendingRequests.delete(interaction.user.id);
-    clearPendingPrompt(interaction.user.id);
-    const confirmation = await interaction.editReply({
+    await interaction.editReply({
       content: result.existing
         ? `You already have an open conversation in **${guild.name}**: ${result.channel}. Send your next message here and I’ll pass it along.`
         : `Your private conversation with **${guild.name}** is open. Reply here in this DM to continue.`,
       embeds: [],
       components: [],
     });
-    if (pending.length && confirmation?.edit) {
-      startReplyTimeout(result.ticket, config, confirmation);
-    }
   } catch (error) {
-    clearPendingPrompt(interaction.user.id);
     await interaction.editReply({
       content: `I couldn't open the conversation: ${error.message}`,
       embeds: [],
@@ -811,7 +808,7 @@ export async function handleModmailMessage(message) {
   if (!channel) {
     active.open = false;
     await closeModmailTicketDb(active.channelId).catch(() => {});
-    modmailTickets.set(active.channelId, active);
+    modmailTickets.delete(active.channelId);
     await message.channel.send("Your previous support conversation is no longer available. I’ll help you open a new one.");
     await startFromDm(message, message.client);
     return true;
@@ -825,15 +822,10 @@ export async function handleModmailMessage(message) {
     }, {
       user: `<@${active.userId}>`,
       "user.name": active.username,
-      "user.tag": active.username,
-      server: guild.name,
+      server: guild?.name || "",
       topic: active.categoryName,
-      category: active.categoryName,
-      channel: `<#${active.channelId}>`,
     })],
-    allowedMentions: { parse: [] },
+    allowedMentions: { roles: config?.staffRoleId ? [config.staffRoleId] : [] },
   });
-  const acknowledgement = await message.channel.send("Your message was sent to the staff team. I’ll update this note if it is not answered in time.");
-  startReplyTimeout(active, config, acknowledgement);
   return true;
 }
