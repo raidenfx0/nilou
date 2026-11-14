@@ -741,6 +741,16 @@ export async function getUidDb(discordId) {
 }
 
 // ─── Startup Hydration ───────────────────────────────────────────────────────────────────────────────────────
+function parseJsonObject(value) {
+  try {
+    const parsed = typeof value === "string" ? JSON.parse(value || "{}") : value;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed
+      : {};
+  } catch {
+    return {};
+  }
+}
 export async function hydrateStore(store) {
   const [afk, sticky, tix, giveaways, trigs, cds, settings, countingRows, allStarboards, allEntries, modmailConfigs, modmailTickets] = await Promise.all([
     getAllAfk(), getAllSticky(), getAllTickets(), getAllGiveaways(),
