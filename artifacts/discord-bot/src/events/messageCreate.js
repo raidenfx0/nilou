@@ -260,7 +260,16 @@ export const name = Events.MessageCreate;
 export async function execute(message) {
   if (!message) return;
 
-  // Handle partial message / partial DM channel so properties like channel.type and channel.send are fully populated
+  console.log("[DM DEBUG] messageCreate received", {
+    author: message.author?.tag,
+    isBot: message.author?.bot,
+    guildId: message.guildId,
+    channelType: message.channel?.type,
+    isDMBased: message.channel?.isDMBased?.(),
+    content: message.content,
+  });
+
+  // Handle partial message
   if (message.partial) {
     try {
       message = await message.fetch();
@@ -270,25 +279,18 @@ export async function execute(message) {
     }
   }
 
-  if (message.channel?.partial) {
+  // Handle partial DM channel using author.createDM() to ensure full channel instance
+  if (!message.guild && message.channel?.partial) {
     try {
-      await message.channel.fetch();
-    } catch (error) {
-      try {
-        message.channel = await message.client.channels.fetch(message.channel.id);
-      } catch (err) {
-        console.error("[DM DEBUG] Failed to fetch partial channel:", err.message);
+      if (message.author?.createDM) {
+        message.channel = await message.author.createDM();
+      } else if (typeof message.channel.fetch === "function") {
+        await message.channel.fetch();
       }
+    } catch (error) {
+      console.error("[DM DEBUG] Failed to resolve DM channel:", error.message);
     }
   }
-
-  console.log("[DM DEBUG] messageCreate received", {
-    author: message.author?.tag,
-    isBot: message.author?.bot,
-    guildId: message.guildId,
-    channelType: message.channel?.type,
-    isDMBased: message.channel?.isDMBased?.(),
-  });
 
   if (message.author?.bot) return;
 
