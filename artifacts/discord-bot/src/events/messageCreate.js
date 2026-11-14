@@ -260,16 +260,40 @@ export const name = Events.MessageCreate;
 export async function execute(message) {
   if (!message) return;
 
+  // Handle partial message / partial DM channel so properties like channel.type and channel.send are fully populated
+  if (message.partial) {
+    try {
+      message = await message.fetch();
+    } catch (error) {
+      console.error("[DM DEBUG] Failed to fetch partial message:", error.message);
+      return;
+    }
+  }
+
+  if (message.channel?.partial) {
+    try {
+      await message.channel.fetch();
+    } catch (error) {
+      try {
+        message.channel = await message.client.channels.fetch(message.channel.id);
+      } catch (err) {
+        console.error("[DM DEBUG] Failed to fetch partial channel:", err.message);
+      }
+    }
+  }
+
   console.log("[DM DEBUG] messageCreate received", {
+    author: message.author?.tag,
     isBot: message.author?.bot,
     guildId: message.guildId,
     channelType: message.channel?.type,
+    isDMBased: message.channel?.isDMBased?.(),
   });
 
   if (message.author?.bot) return;
 
   const handledByModmail = await handleModmailMessage(message).catch((error) => {
-    console.error("ModMail message handling failed:", error.message);
+    console.error("ModMail message handling failed:", error);
     return false;
   });
   if (handledByModmail || !message.guild) return;
