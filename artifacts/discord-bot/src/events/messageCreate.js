@@ -254,7 +254,6 @@ export async function scheduleTheaterDropsForGuild(guild) {
   });
 }
 
-export const name = Events.MessageCreate;
 
 export const name = Events.MessageCreate;
 
