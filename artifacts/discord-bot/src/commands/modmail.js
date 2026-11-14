@@ -269,9 +269,9 @@ async function accessibleModmailGuilds(client, userId) {
     .filter((config) => config.enabled)
     .slice(0, 100);
   const memberResults = await Promise.all(configured.map(async (config) => {
-    const guild = client.guilds.cache.get(config.guildId);
+    const guild = client.guilds.cache.get(config.guildId) || await client.guilds.fetch(config.guildId).catch(() => null);
     if (!guild) return null;
-    const member = await guild.members.fetch(userId).catch(() => null);
+    const member = guild.members.cache.get(userId) || await guild.members.fetch(userId).catch(() => null);
     return member ? guild : null;
   }));
   return memberResults.filter(Boolean);
@@ -294,7 +294,12 @@ async function sendServerPicker(message, guilds) {
 async function startFromDm(message, client) {
   const guilds = await accessibleModmailGuilds(client, message.author.id);
   if (!guilds.length) {
-    await message.channel.send("ModMail is not currently set up in a server you belong to. Please contact a server moderator another way.");
+    const totalEnabled = [...modmailConfigs.values()].filter((c) => c.enabled).length;
+    if (totalEnabled === 0) {
+      await message.channel.send("⚠️ **ModMail is not configured yet.**\nA server administrator needs to run `/modmail setup` in your server before ModMail can accept DMs.");
+    } else {
+      await message.channel.send("ModMail is not currently set up in a server you belong to. Please contact a server moderator another way.");
+    }
     return;
   }
 
@@ -305,8 +310,24 @@ async function startFromDm(message, client) {
   const pending = pendingRequests.get(message.author.id) || [];
   pending.push(request);
   pendingRequests.set(message.author.id, pending.slice(-10));
-  const existingPrompt = pendingPrompts.get(message.author.id);
-  if (existingPrompt) return;
+
+  clearPendingPrompt(message.author.id);
+
+  // If the user belongs to only 1 configured server, skip server selection and show topics directly!
+  if (guilds.length === 1) {
+    const singleGuild = guilds[0];
+    const config = modmailConfigs.get(singleGuild.id);
+    const prompt = await message.channel.send({
+      embeds: [configuredEmbed(config, "topicPicker", {
+        server: singleGuild.name,
+        user: `<@${message.author.id}>`,
+      })],
+      components: [categorySelect(singleGuild.id, config)],
+    });
+    expirePrompt(message.author.id, prompt, "choose a support topic");
+    return;
+  }
+
   const prompt = await sendServerPicker(message, guilds);
   expirePrompt(message.author.id, prompt, "choose a server and topic");
 }
@@ -675,9 +696,9 @@ export async function execute(interaction) {
 export async function handleModmailSelect(interaction) {
   if (interaction.customId === "modmail:server") {
     const guildId = interaction.values[0];
-    const guild = interaction.client.guilds.cache.get(guildId);
+    const guild = interaction.client.guilds.cache.get(guildId) || await interaction.client.guilds.fetch(guildId).catch(() => null);
     const config = modmailConfigs.get(guildId);
-    const member = guild ? await guild.members.fetch(interaction.user.id).catch(() => null) : null;
+    const member = guild ? (guild.members.cache.get(interaction.user.id) || await guild.members.fetch(interaction.user.id).catch(() => null)) : null;
     if (!guild || !member || !config?.enabled) {
       return interaction.update({
         content: "That server is no longer available for ModMail. Send me another message to try again.",
@@ -694,9 +715,9 @@ export async function handleModmailSelect(interaction) {
 
   if (!interaction.customId.startsWith("modmail:category:")) return;
   const guildId = interaction.customId.slice("modmail:category:".length);
-  const guild = interaction.client.guilds.cache.get(guildId);
+  const guild = interaction.client.guilds.cache.get(guildId) || await interaction.client.guilds.fetch(guildId).catch(() => null);
   const config = modmailConfigs.get(guildId);
-  const member = guild ? await guild.members.fetch(interaction.user.id).catch(() => null) : null;
+  const member = guild ? (guild.members.cache.get(interaction.user.id) || await guild.members.fetch(interaction.user.id).catch(() => null)) : null;
   const category = configCategories(config).find((item) => item.key === interaction.values[0]);
   if (!guild || !member || !config?.enabled || !category) {
     return interaction.update({
@@ -705,6 +726,9 @@ export async function handleModmailSelect(interaction) {
       components: [],
     });
   }
+
+  // Clear timeout timer so prompt doesn't get wiped after 5 mins
+  clearPendingPrompt(interaction.user.id);
 
   await interaction.deferUpdate();
   try {
@@ -798,7 +822,9 @@ export async function handleModmailMessage(message) {
     return true;
   }
 
-  if (message.channel?.type !== ChannelType.DM) return false;
+  // Ensure DM context (message is not in a guild, or channel is DM-based)
+  const isDm = !message.guild || message.channel?.isDMBased?.() || message.channel?.type === ChannelType.DM;
+  if (!isDm) return false;
   const active = [...modmailTickets.values()].find((ticket) =>
     ticket.open && ticket.userId === message.author.id);
   if (!active) {
