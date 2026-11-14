@@ -684,7 +684,7 @@ export async function handleModmailSelect(interaction) {
     return interaction.update({
       content: `You selected **${guild.name}**. Choose the topic for your request:`,
       embeds: [],
-      components: [categorySelect(guildId)],
+      components: [categorySelect(guildId, config)],
     });
   }
 
