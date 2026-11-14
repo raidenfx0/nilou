@@ -610,24 +610,28 @@ export async function execute(interaction) {
   }
 
   if (subcommand === "setup") {
-    if (!isAdmin(interaction.member)) return denyAdmin(interaction);
-    const category = interaction.options.getChannel("category");
-    const logChannel = interaction.options.getChannel("log_channel");
-    const staffRole = interaction.options.getRole("staff_role");
-    const config = {
-      guildId: interaction.guildId,
-      categoryId: category.id,
-      logChannelId: logChannel.id,
-      staffRoleId: staffRole.id,
-      enabled: true,
-    };
-    await upsertModmailConfig(config);
-    modmailConfigs.set(interaction.guildId, config);
-    return interaction.reply({
-      embeds: [configEmbed(interaction.guild, config)],
-      ephemeral: true,
-    });
-  }
+  if (!isAdmin(interaction.member)) return denyAdmin(interaction);
+
+  await interaction.deferReply({ ephemeral: true });
+
+  const category = interaction.options.getChannel("category");
+  const logChannel = interaction.options.getChannel("log_channel");
+  const staffRole = interaction.options.getRole("staff_role");
+  const config = {
+    guildId: interaction.guildId,
+    categoryId: category.id,
+    logChannelId: logChannel.id,
+    staffRoleId: staffRole.id,
+    enabled: true,
+  };
+
+  await upsertModmailConfig(config);
+  modmailConfigs.set(interaction.guildId, config);
+
+  return interaction.editReply({
+    embeds: [configEmbed(interaction.guild, config)],
+  });
+}
 
   const config = modmailConfigs.get(interaction.guildId);
   if (subcommand === "settings") {
