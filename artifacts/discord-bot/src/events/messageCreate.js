@@ -256,6 +256,11 @@ export async function scheduleTheaterDropsForGuild(guild) {
 
 export const name = Events.MessageCreate;
 
+console.log("[DM DEBUG] messageCreate received", {
+  isBot: message.author?.bot,
+  guildId: message.guildId,
+  channelType: message.channel?.type,
+});
 export async function execute(message) {
   if (!message) return;
   if (message.author?.bot) return;
