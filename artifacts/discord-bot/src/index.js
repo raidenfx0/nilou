@@ -1,14 +1,48 @@
 import express from "express";
-const app = express();
+import path from "path";
+import fs from "fs";
+import { fileURLToPath } from "url";
 
-// This tells Render "I am alive!"
-app.get("/", (req, res) => {
-  res.send("Bot is running!");
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const dashboardDist = path.resolve(__dirname, "../../dashboard/dist/public");
+
+const app = express();
+let handleApiRequest = null;
+
+// Allow parsed bodies or route to API handler
+app.use((req, res, next) => {
+  if (req.url.startsWith("/api") || req.url.startsWith("/bot-api")) {
+    if (typeof handleApiRequest === "function") {
+      return handleApiRequest(req, res);
+    }
+    res.writeHead(503, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Bot is starting up, please try again in a few seconds." }));
+    return;
+  }
+  next();
+});
+
+// Serve dashboard static assets dynamically
+app.use((req, res, next) => {
+  if (fs.existsSync(dashboardDist)) {
+    return express.static(dashboardDist)(req, res, next);
+  }
+  next();
+});
+
+// SPA fallback to index.html or keep-alive message
+app.get("*", (req, res) => {
+  const indexHtml = path.join(dashboardDist, "index.html");
+  if (fs.existsSync(indexHtml)) {
+    return res.sendFile(indexHtml);
+  }
+  res.send("🌸 Nilou Bot is running! (Dashboard will load here once built)");
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`Keep-alive server is running on port ${PORT}`);
+  console.log(`Keep-alive & Dashboard server is running on port ${PORT}`);
 });
 
 import {
@@ -578,6 +612,9 @@ client.login(TOKEN);
 const BOT_API_PORT = 4001;
 
 function readBody(req) {
+  if (req.body && typeof req.body === "object") {
+    return Promise.resolve(req.body);
+  }
   return new Promise((resolve, reject) => {
     let data = "";
     req.on("data", (chunk) => (data += chunk));
@@ -613,7 +650,10 @@ const hasSupportEmbedContent = (embed = {}) => Boolean(
   || embed.thumbnailUrl?.trim()
 );
 
-const server = createServer(async (req, res) => {
+async function processApiRequest(req, res) {
+  if (req.url?.startsWith("/bot-api")) {
+    req.url = req.url.replace(/^\/bot-api/, "/api");
+  }
   res.setHeader("Content-Type", "application/json");
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
@@ -1209,7 +1249,11 @@ const server = createServer(async (req, res) => {
 
   res.statusCode = 404;
   res.end(JSON.stringify({ error: "Not found" }));
-});
+}
+
+handleApiRequest = processApiRequest;
+
+const server = createServer(processApiRequest);
 
 server.listen(BOT_API_PORT, "0.0.0.0", () => {
   console.log(`🌐 Bot HTTP API running on port ${BOT_API_PORT}`);
