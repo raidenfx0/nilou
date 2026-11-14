@@ -260,37 +260,38 @@ export const name = Events.MessageCreate;
 export async function execute(message) {
   if (!message) return;
 
+  // ── Full DM handling: fetch partial channel first, then partial message ──
+  // Discord.js v14 emits DMs with a partial DMChannel. We must resolve the
+  // channel BEFORE fetching the message, otherwise message.fetch() 404s.
+  if (!message.guildId && message.channel?.partial) {
+    try {
+      message.channel = await message.author.createDM();
+    } catch (error) {
+      console.error("[DM DEBUG] Failed to resolve partial DM channel:", error.message);
+      return;
+    }
+  }
+
+  if (message.partial) {
+    try {
+      message = await message.fetch();
+    } catch (error) {
+      console.error("[DM DEBUG] Failed to fetch partial DM message:", error.message);
+      return;
+    }
+  }
+
+  const isDM = !message.guildId;
+
   console.log("[DM DEBUG] messageCreate received", {
     author: message.author?.tag,
     isBot: message.author?.bot,
     guildId: message.guildId,
     channelType: message.channel?.type,
     isDMBased: message.channel?.isDMBased?.(),
-    content: message.content,
+    isDM,
+    content: message.content?.slice(0, 80),
   });
-
-  // Handle partial message
-  if (message.partial) {
-    try {
-      message = await message.fetch();
-    } catch (error) {
-      console.error("[DM DEBUG] Failed to fetch partial message:", error.message);
-      return;
-    }
-  }
-
-  // Handle partial DM channel using author.createDM() to ensure full channel instance
-  if (!message.guild && message.channel?.partial) {
-    try {
-      if (message.author?.createDM) {
-        message.channel = await message.author.createDM();
-      } else if (typeof message.channel.fetch === "function") {
-        await message.channel.fetch();
-      }
-    } catch (error) {
-      console.error("[DM DEBUG] Failed to resolve DM channel:", error.message);
-    }
-  }
 
   if (message.author?.bot) return;
 

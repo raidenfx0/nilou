@@ -366,6 +366,23 @@ client.manager.on("error", (name, error) => {
 loadCommands(client);
 loadEvents(client);
 
+// Raw gateway listener — fires for every packet Discord sends.
+// This lets us see if DM MESSAGE_CREATE events are reaching the bot at all,
+// even when the channel is not cached and messageCreate would otherwise be silent.
+client.on("raw", (packet) => {
+  if (packet.t === "MESSAGE_CREATE") {
+    const d = packet.d;
+    // Only log DMs (no guild_id on the payload) to keep noise low
+    if (!d.guild_id) {
+      console.log("[RAW DM] MESSAGE_CREATE packet received", {
+        author: d.author?.username,
+        channelId: d.channel_id,
+        content: (d.content || "").slice(0, 80),
+      });
+    }
+  }
+});
+
 const store = {
   afkUsers, stickyMessages, tickets, ticketConfig, giveaways, modmailConfigs, modmailTickets,
   triggers, countdowns, pinnedCountdowns, adminRoles, welcomeChannels,
