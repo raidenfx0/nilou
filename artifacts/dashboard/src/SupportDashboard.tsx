@@ -165,10 +165,12 @@ export default function SupportDashboard({ guilds, onRefresh }: Props) {
   const [data, setData] = useState<SupportResponse | null>(null);
   const [ticket, setTicket] = useState<TicketConfig>(defaultTicket);
   const [modmail, setModmail] = useState<ModmailConfig>(defaultModmail);
-  const [view, setView] = useState<"tickets" | "modmail" | "activity">("tickets");
+  const [boost, setBoost] = useState<EventMessageConfig>(defaultBoostMessage);
+  const [twitch, setTwitch] = useState<EventMessageConfig>(defaultTwitchSubscriberMessage);
+  const [view, setView] = useState<"tickets" | "modmail" | "events" | "activity">("tickets");
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
-  const [saving, setSaving] = useState<"" | "ticket" | "modmail">("");
+  const [saving, setSaving] = useState<"" | "ticket" | "modmail" | "events">("");
   const [notice, setNotice] = useState("");
   const [publishChannel, setPublishChannel] = useState("");
   const [publishing, setPublishing] = useState(false);
@@ -187,6 +189,8 @@ export default function SupportDashboard({ guilds, onRefresh }: Props) {
       const config = result.configs?.[guildId];
       setTicket(config?.ticket ? { ...defaultTicket(), ...config.ticket, panelOptions: config.ticket.panelOptions ?? [] } : defaultTicket());
       setModmail(config?.modmail ? { ...defaultModmail(), ...config.modmail, categories: config.modmail.categories ?? [], embeds: { ...defaultModmail().embeds, ...config.modmail.embeds } } : defaultModmail());
+      setBoost(config?.boost ? { ...defaultBoostMessage(), ...config.boost, embed: { ...defaultBoostMessage().embed, ...config.boost.embed } } : defaultBoostMessage());
+      setTwitch(config?.twitchSubscriber ? { ...defaultTwitchSubscriberMessage(), ...config.twitchSubscriber, embed: { ...defaultTwitchSubscriberMessage().embed, ...config.twitchSubscriber.embed } } : defaultTwitchSubscriberMessage());
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : "Unable to load support settings.");
     } finally { setLoading(false); }
@@ -195,16 +199,33 @@ export default function SupportDashboard({ guilds, onRefresh }: Props) {
   useEffect(() => { setGuildId(current => guilds.some(guild => guild.id === current) ? current : guilds[0]?.id ?? ""); }, [guilds]);
   useEffect(() => { void load(); }, [load]);
 
-  const save = async (kind: "ticket" | "modmail") => {
+  const save = async (kind: "ticket" | "modmail" | "events") => {
     if (!guildId) return;
     setSaving(kind); setNotice("");
     try {
-      const response = await fetch(CONFIG_URL, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ guildId, [kind]: kind === "ticket" ? ticket : modmail }) });
+      const payload = kind === "events"
+        ? { guildId, boost, twitchSubscriber: twitch }
+        : { guildId, [kind]: kind === "ticket" ? ticket : modmail };
+      const response = await fetch(CONFIG_URL, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
       if (!response.ok) throw new Error(`Save failed (${response.status})`);
       const result = await response.json();
       if (!result?.success) throw new Error("The settings were not saved.");
-      setNotice(kind === "ticket" ? "Ticket settings saved." : "ModMail settings saved.");
-      setData(current => current ? { ...current, configs: { ...current.configs, [guildId]: { ...current.configs[guildId], [kind]: kind === "ticket" ? ticket : modmail } } } : current);
+      setNotice(kind === "ticket" ? "Ticket settings saved." : kind === "modmail" ? "ModMail settings saved." : "Announcement settings saved.");
+      setData(current => current ? {
+        ...current,
+        configs: {
+          ...current.configs,
+          [guildId]: {
+            ...current.configs[guildId],
+            ...(kind === "events" ? { boost, twitchSubscriber: twitch } : { [kind]: kind === "ticket" ? ticket : modmail }),
+          },
+        },
+      } : current);
       onRefresh();
     } catch (error) { setNotice(error instanceof Error ? error.message : "Could not save settings."); }
     finally { setSaving(""); }
@@ -229,7 +250,7 @@ export default function SupportDashboard({ guilds, onRefresh }: Props) {
   const visibleItems = view === "tickets" ? tickets : view === "modmail" ? conversations : [...tickets, ...conversations];
   const updateOption = (index: number, value: PanelOption) => setTicket(current => ({ ...current, panelOptions: current.panelOptions.map((option, i) => i === index ? value : option) }));
   const updateCategory = (index: number, value: ModmailCategory) => setModmail(current => ({ ...current, categories: current.categories.map((category, i) => i === index ? value : category) }));
-  const updateTicketEmbed = (key: "panelEmbed" | "openedEmbed" | "closedEmbed", value: EmbedTemplate) => setTicket(current => ({ ...current, [key]: value }));
+  const updateTicketEmbed = (key: "panelEmbed" | "openedEmbed" | "openedLogEmbed" | "closedEmbed", value: EmbedTemplate) => setTicket(current => ({ ...current, [key]: value }));
   const updateModmailEmbed = (key: keyof ModmailConfig["embeds"], value: EmbedTemplate) => setModmail(current => ({ ...current, embeds: { ...current.embeds, [key]: value } }));
 
   return (
@@ -252,7 +273,7 @@ export default function SupportDashboard({ guilds, onRefresh }: Props) {
       </header>
 
       <div className="flex flex-wrap gap-2 border-b border-rose-950/70 pb-3" role="tablist" aria-label="Support sections">
-        {([{ id: "tickets", label: "Ticket system" }, { id: "modmail", label: "ModMail" }, { id: "activity", label: "Activity" }] as const).map(tab => (
+        {([{ id: "tickets", label: "Ticket system" }, { id: "modmail", label: "ModMail" }, { id: "events", label: "Boost & Twitch" }, { id: "activity", label: "Activity" }] as const).map(tab => (
           <button key={tab.id} type="button" role="tab" aria-selected={view === tab.id} onClick={() => setView(tab.id)} className={`rounded-lg px-4 py-2.5 text-sm font-medium transition ${view === tab.id ? "bg-rose-300 text-[#271a1e]" : "text-rose-100/60 hover:bg-rose-950/50 hover:text-rose-50"}`}>{tab.label}</button>
         ))}
         <button type="button" onClick={() => void load()} className="ml-auto inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-rose-100/55 hover:bg-rose-950/50 hover:text-rose-50" aria-label="Refresh support data"><RefreshCw size={15} /> <span className="hidden sm:inline">Refresh</span></button>
@@ -287,11 +308,39 @@ export default function SupportDashboard({ guilds, onRefresh }: Props) {
             <p className="text-xs font-semibold uppercase tracking-[.17em] text-rose-300">02 / Messages</p><h2 className="mb-4 mt-1 text-xl font-semibold">Ticket embed templates</h2>
             <div className="space-y-2.5">
               <EmbedEditor title="Ticket panel" value={ticket.panelEmbed} onChange={value => updateTicketEmbed("panelEmbed", value)} />
-              <EmbedEditor title="Ticket opened" value={ticket.openedEmbed} onChange={value => updateTicketEmbed("openedEmbed", value)} />
+              <EmbedEditor title="Ticket opened (member view)" value={ticket.openedEmbed} onChange={value => updateTicketEmbed("openedEmbed", value)} />
+              <EmbedEditor title="Ticket opened log (staff log channel)" value={ticket.openedLogEmbed} onChange={value => updateTicketEmbed("openedLogEmbed", value)} />
               <EmbedEditor title="Ticket closed" value={ticket.closedEmbed} onChange={value => updateTicketEmbed("closedEmbed", value)} />
             </div>
           </section>
           <div className="sticky bottom-3 z-10 flex justify-end"><button type="button" onClick={() => void save("ticket")} disabled={!!saving || !guildId} className="inline-flex items-center gap-2 rounded-xl bg-rose-300 px-5 py-3 text-sm font-semibold text-[#271a1e] shadow-lg shadow-black/20 hover:bg-rose-200 disabled:opacity-60">{saving === "ticket" ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}Save ticket settings</button></div>
+        </div>
+      ) : view === "events" ? (
+        <div className="space-y-5">
+          <EventMessageEditor
+            title="Server boost announcement"
+            help="Automatically sends a thank-you message when someone boosts your server."
+            config={boost}
+            onChange={setBoost}
+          />
+          <EventMessageEditor
+            title="Twitch subscriber announcement"
+            help="Automatically sends a thank-you message when someone receives the Twitch subscriber role assigned by Discord's Twitch integration."
+            config={twitch}
+            onChange={setTwitch}
+            requireRole={true}
+          />
+          <div className="sticky bottom-3 z-10 flex justify-end">
+            <button
+              type="button"
+              onClick={() => void save("events")}
+              disabled={!!saving || !guildId}
+              className="inline-flex items-center gap-2 rounded-xl bg-rose-300 px-5 py-3 text-sm font-semibold text-[#271a1e] shadow-lg shadow-black/20 hover:bg-rose-200 disabled:opacity-60"
+            >
+              {saving === "events" ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
+              Save announcement settings
+            </button>
+          </div>
         </div>
       ) : view === "modmail" ? (
         <div className="space-y-5">
