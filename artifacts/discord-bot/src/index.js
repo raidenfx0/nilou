@@ -366,20 +366,46 @@ client.manager.on("error", (name, error) => {
 loadCommands(client);
 loadEvents(client);
 
-// Raw gateway listener — fires for every packet Discord sends.
-// This lets us see if DM MESSAGE_CREATE events are reaching the bot at all,
-// even when the channel is not cached and messageCreate would otherwise be silent.
-client.on("raw", (packet) => {
-  if (packet.t === "MESSAGE_CREATE") {
-    const d = packet.d;
-    // Only log DMs (no guild_id on the payload) to keep noise low
-    if (!d.guild_id) {
-      console.log("[RAW DM] MESSAGE_CREATE packet received", {
-        author: d.author?.username,
-        channelId: d.channel_id,
-        content: (d.content || "").slice(0, 80),
-      });
+// ─── Raw DM handler ────────────────────────────────────────────────────────
+// Discord.js v14 silently drops messageCreate for uncached DM channels even
+// with Partials.Channel enabled. The raw gateway event always fires, so we
+// intercept DM packets here, manually fetch the channel & message, and pass
+// them to the modmail handler.
+const _handledDmIds = new Set();
+client.on("raw", async (packet) => {
+  if (packet.t !== "MESSAGE_CREATE") return;
+  const d = packet.d;
+  if (d.guild_id) return;           // guild message — let messageCreate handle it
+  if (d.author?.bot) return;        // ignore bot messages in DMs
+
+  // Deduplicate: if messageCreate also fires for this message, skip
+  if (_handledDmIds.has(d.id)) return;
+  _handledDmIds.add(d.id);
+  // Keep the set small — purge after 30 s
+  setTimeout(() => _handledDmIds.delete(d.id), 30_000);
+
+  console.log("[RAW DM] Handling DM via raw event", {
+    author: d.author?.username,
+    channelId: d.channel_id,
+    content: (d.content || "").slice(0, 80),
+  });
+
+  try {
+    // Resolve the DM channel and message into full discord.js objects
+    const user = await client.users.fetch(d.author.id);
+    const dmChannel = await user.createDM();
+    const message = await dmChannel.messages.fetch(d.id);
+
+    // Hand off to modmail (same path messageCreate used to take)
+    const handled = await handleModmailMessage(message).catch((err) => {
+      console.error("[RAW DM] ModMail handler error:", err);
+      return false;
+    });
+    if (!handled) {
+      console.log("[RAW DM] DM not handled by modmail (no config?).");
     }
+  } catch (err) {
+    console.error("[RAW DM] Failed to process DM:", err.message);
   }
 });
 

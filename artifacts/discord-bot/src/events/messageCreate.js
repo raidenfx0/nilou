@@ -260,46 +260,29 @@ export const name = Events.MessageCreate;
 export async function execute(message) {
   if (!message) return;
 
-  // ── Full DM handling: fetch partial channel first, then partial message ──
-  // Discord.js v14 emits DMs with a partial DMChannel. We must resolve the
-  // channel BEFORE fetching the message, otherwise message.fetch() 404s.
-  if (!message.guildId && message.channel?.partial) {
-    try {
-      message.channel = await message.author.createDM();
-    } catch (error) {
-      console.error("[DM DEBUG] Failed to resolve partial DM channel:", error.message);
-      return;
-    }
-  }
+  // ── DMs are now handled by the raw gateway listener in index.js ──
+  // Discord.js v14 silently drops messageCreate for uncached DM channels,
+  // so we skip DMs here entirely. The raw handler fetches the full message
+  // and calls handleModmailMessage directly.
+  if (!message.guildId) return;
 
   if (message.partial) {
     try {
       message = await message.fetch();
     } catch (error) {
-      console.error("[DM DEBUG] Failed to fetch partial DM message:", error.message);
+      console.error("Failed to fetch partial message:", error.message);
       return;
     }
   }
 
-  const isDM = !message.guildId;
-
-  console.log("[DM DEBUG] messageCreate received", {
-    author: message.author?.tag,
-    isBot: message.author?.bot,
-    guildId: message.guildId,
-    channelType: message.channel?.type,
-    isDMBased: message.channel?.isDMBased?.(),
-    isDM,
-    content: message.content?.slice(0, 80),
-  });
-
   if (message.author?.bot) return;
 
+  // Guild-side modmail (staff replies in ticket channels)
   const handledByModmail = await handleModmailMessage(message).catch((error) => {
     console.error("ModMail message handling failed:", error);
     return false;
   });
-  if (handledByModmail || !message.guild) return;
+  if (handledByModmail) return;
 
   const { guildId, channelId } = message;
   const userId = message.author.id;
