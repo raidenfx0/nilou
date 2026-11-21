@@ -102,6 +102,7 @@ import {
 import { handleGiveawayButton, restoreGiveawayTimers } from "./commands/giveaway.js";
 import { handleHelpSelect, handleHelpButton } from "./commands/help.js";
 import {
+  handleModmailMessage,
   handleModmailSelect,
   handleModmailCloseButton,
   getModmailDashboardConfig,
