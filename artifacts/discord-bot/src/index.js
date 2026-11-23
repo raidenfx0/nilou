@@ -102,10 +102,10 @@ import {
 import { handleGiveawayButton, restoreGiveawayTimers } from "./commands/giveaway.js";
 import { handleHelpSelect, handleHelpButton } from "./commands/help.js";
 import {
-  handleModmailMessage,
   handleModmailSelect,
   handleModmailCloseButton,
   getModmailDashboardConfig,
+  handleModmailMessage,
 } from "./commands/modmail.js";
 import { updateVoiceStatus } from "./commands/music.js";
 import {
@@ -769,39 +769,6 @@ async function processApiRequest(req, res) {
       res.end(JSON.stringify(list));
       return;
     }
-
-    if (url.startsWith("/api/events/")) {
-  const guildId = url.slice("/api/events/".length);
-  const guild = await client.guilds.fetch(guildId).catch(() => null);
-
-  if (!guild) {
-    res.statusCode = 404;
-    res.end(JSON.stringify({ error: "Server not found" }));
-    return;
-  }
-
-  try {
-    const scheduledEvents = await guild.scheduledEvents.fetch();
-
-    res.end(JSON.stringify(
-      [...scheduledEvents.values()].map((event) => ({
-        id: event.id,
-        name: event.name,
-        description: event.description ?? "",
-        startTime: event.scheduledStartAt?.toISOString() ?? null,
-        endTime: event.scheduledEndAt?.toISOString() ?? null,
-        status: event.status,
-        url: `https://discord.com/events/${guild.id}/${event.id}`,
-      })),
-    ));
-  } catch (error) {
-    console.error("Could not fetch Discord events:", error);
-    res.statusCode = 500;
-    res.end(JSON.stringify({ error: "Could not fetch Discord events" }));
-  }
-
-  return;
-}
 
     if (url === "/api/giveaways") {
       res.end(
