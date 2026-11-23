@@ -35,12 +35,6 @@ cd "$(dirname "$0")"
 #   done
 # fi
 
-# ─── Build dashboard if missing ─────────────────────────────────────────────
-if [ ! -f "../dashboard/dist/public/index.html" ]; then
-  echo "🎨 Building Nilou Dashboard..."
-  (cd ../dashboard && PORT=10000 BASE_PATH=/ pnpm run build) || echo "⚠️ Dashboard build skipped or failed"
-fi
-
 # ─── Start the Discord bot (foreground) ─────────────────────────────────────
 echo "🤖 Starting Nilou Bot..."
 node --enable-source-maps src/index.js

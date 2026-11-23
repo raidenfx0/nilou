@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: nilou-bot
+    runtime: node
+    region: oregon
+    plan: free
+    buildCommand: pnpm install --frozen-lockfile && PORT=10000 BASE_PATH=/ pnpm --filter @workspace/dashboard run build
+    startCommand: pnpm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+    autoDeploy: true
